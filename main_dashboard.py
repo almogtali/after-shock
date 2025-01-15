@@ -265,57 +265,159 @@ def demo_chart(row_data, months, institutions, demo_category, demo_subgroups_map
 #######################################################################
 # --- OVERALL TIME CHART (TOP) ----------------------------------------
 #######################################################################
-def main_time_chart(data, months, selected_institutions):
-    top_colors = {
-        'bibi': '#1f77b4',
-        'tzahal': '#2ca02c',
-        'mishtara': '#d62728',
-        'memshala': '#ff7f0e'
-    }
+# def main_time_chart(data, months, selected_institutions):
+#     top_colors = {
+#         'bibi': '#1f77b4',
+#         'tzahal': '#2ca02c',
+#         'mishtara': '#d62728',
+#         'memshala': '#ff7f0e'
+#     }
+#
+#     fig = go.Figure()
+#
+#     inst_to_key = {
+#         'bibi': data['bibi_scores'],
+#         'tzahal': data['tzal_scores'],
+#         'mishtara': data['mish_scores'],
+#         'memshala': data['memshala_scores'],
+#     }
+#
+#     for inst in selected_institutions:
+#         y_vals = inst_to_key[inst]
+#         fig.add_trace(go.Scatter(
+#             x=months,
+#             y=y_vals,
+#             mode="lines+markers",
+#             name=inst.capitalize(),
+#             line=dict(color=top_colors.get(inst, "#000"), width=2),
+#             marker=dict(size=6),
+#             hovertemplate=(
+#                     f"<b>{inst.capitalize()}</b><br>"
+#                     + "Month: %{x}<br>"
+#                     + "Trust Score: %{y:.2f}<extra></extra>"
+#             )
+#         ))
+#
+#     fig.update_layout(
+#         title="Overall Trust in Institutions Over Time",
+#         xaxis_title="Month",
+#         yaxis_title="Trust Score",
+#         yaxis=dict(range=[0, 5]),
+#         legend=dict(x=1.0, y=1.0, xanchor='left', yanchor='top'),
+#         margin=dict(l=60, r=60, t=80, b=80),
+#         height=450,
+#     )
+#     return fig
+def main_time_chart(data, months, institutions):
+    """
+    Visualize trust distribution for a single institution over time using pie charts.
+    Each row contains up to 7 months.
+    """
+    import math
 
-    fig = go.Figure()
+    colors = {
+        1: '#d62728',  # Red for "low trust"
+        2: '#ff7f0e',  # Orange
+        3: '#2ca02c',  # Light green
+        4: '#1f77b4',  # Dark green for "high trust"
+    }
 
     inst_to_key = {
-        'bibi': data['bibi_scores'],
-        'tzahal': data['tzal_scores'],
-        'mishtara': data['mish_scores'],
-        'memshala': data['memshala_scores'],
+        'bibi': data['bibi_rows'],
+        'tzahal': data['tzal_rows'],
+        'mishtara': data['mish_rows'],
+        'memshala': data['mems_rows'],
     }
 
-    for inst in selected_institutions:
-        y_vals = inst_to_key[inst]
-        fig.add_trace(go.Scatter(
-            x=months,
-            y=y_vals,
-            mode="lines+markers",
-            name=inst.capitalize(),
-            line=dict(color=top_colors.get(inst, "#000"), width=2),
-            marker=dict(size=6),
-            hovertemplate=(
-                    f"<b>{inst.capitalize()}</b><br>"
-                    + "Month: %{x}<br>"
-                    + "Trust Score: %{y:.2f}<extra></extra>"
-            )
-        ))
-
-    fig.update_layout(
-        title="Overall Trust in Institutions Over Time",
-        xaxis_title="Month",
-        yaxis_title="Trust Score",
-        yaxis=dict(range=[0, 5]),
-        legend=dict(x=1.0, y=1.0, xanchor='left', yanchor='top'),
-        margin=dict(l=60, r=60, t=80, b=80),
-        height=450,
+    # Let the user select a single institution
+    selected_institution = st.selectbox(
+        "Choose an institution to display:",
+        institutions,
+        format_func=lambda x: {
+            'bibi': 'Bibi (\u05e8\u05d0\u05e9 \u05de\u05de\u05e9\u05dc\u05d4)',
+            'tzahal': 'Tzahal (\u05e6\u05d4\"\u05dc)',
+            'mishtara': 'Mishtara (\u05de\u05e9\u05d8\u05e8\u05d4)',
+            'memshala': 'Memshala (\u05de\u05de\u05e9\u05dc\u05d4)'
+        }.get(x, x)
     )
+
+    # Retrieve data for the selected institution
+    df = inst_to_key[selected_institution]
+
+    # Filter months with available data
+    valid_months = []
+    for month in months:
+        if 'month_year' not in df.columns:
+            continue
+        monthly_data = df[df['month_year'].astype(str) == month]
+        if not monthly_data.empty:
+            valid_months.append(month)
+
+    # Determine the number of rows needed for all pie charts
+    pies_per_row = 7  # Maximum pies in one row
+    rows_needed = math.ceil(len(valid_months) / pies_per_row)
+
+    # Create specs dynamically
+    specs = [
+        [{'type': 'domain'} for _ in range(pies_per_row)]
+        for _ in range(rows_needed)
+    ]
+
+    # Prepare subplots
+    fig = sp.make_subplots(
+        rows=rows_needed,
+        cols=pies_per_row,
+        specs=specs,
+        subplot_titles=[f"{month}" for month in valid_months],
+    )
+
+    # Add pie charts for each month
+    for idx, month in enumerate(valid_months):
+        # Filter the data for the current month
+        monthly_data = df[df['month_year'].astype(str) == month]
+
+        # Calculate distribution for trust levels (1-4)
+        trust_distribution = monthly_data[['a1', 'a2', 'a3', 'a4']].sum().values
+        trust_labels = [f"Level {i}" for i in range(1, 5)]
+
+        # Skip if no data available for this month
+        if not trust_distribution.any():
+            continue
+
+        # Determine row and column position for the pie chart
+        row = idx // pies_per_row + 1
+        col = idx % pies_per_row + 1
+
+        # Create a pie chart
+        pie_chart = go.Pie(
+            labels=trust_labels,
+            values=trust_distribution,
+            marker=dict(colors=[colors[i] for i in range(1, 5)]),
+            name=f"{selected_institution.capitalize()} - {month}",
+            hovertemplate=(
+                f"{selected_institution.capitalize()}<br>"
+                + "Level: %{label}<br>"
+                + "Count: %{value}<extra></extra>"
+            )
+        )
+
+        # Add pie chart to the subplot
+        fig.add_trace(pie_chart, row=row, col=col)
+
+    # Update layout
+    fig.update_layout(
+        title=f"Trust Distribution for {selected_institution.capitalize()} by Month",
+        height=250 * rows_needed,  # Adjust height dynamically
+        showlegend=False,
+        margin=dict(t=50, l=20, r=20, b=20)
+    )
+
+    #st.plotly_chart(fig, use_container_width=True)
     return fig
 
 
-#######################################################################
-# --- PLACEHOLDERS FOR OTHER VISUALIZATIONS ---------------------------
-#######################################################################
+
 def rocket_strikes_map():
-
-
     # Load data
     @st.cache_data
     def load_strike_data():
@@ -420,9 +522,6 @@ def rocket_strikes_map():
 
 def significant_events_chart(_):
     st.info("This visualization is not implemented yet.")
-
-
-
 
 
 def create_solidarity_dashboard():
@@ -626,6 +725,11 @@ def create_line_plot(question_data, full_question, selected_question, response_m
     max_value = question_data[numeric_cols].max().max() * 100
     y_range_max = min(100, max_value + 10)  # Keep within 100% but add padding
 
+    # Generate explicit tick values and labels for dates
+    unique_dates = question_data['date'].dropna().sort_values().unique()
+    tickvals = unique_dates
+    ticktext = [date.strftime('%Y-%m-%d') for date in unique_dates]
+
     # Update layout specifically for line plot
     fig.update_layout(
         title={
@@ -655,7 +759,10 @@ def create_line_plot(question_data, full_question, selected_question, response_m
 
     fig.update_xaxes(
         gridcolor='rgba(0,0,0,0.1)',
-        showgrid=True
+        showgrid=True,
+        tickvals=tickvals,
+        ticktext=ticktext,
+        tickangle=45  # Rotate labels for better readability
     )
 
     fig.update_yaxes(
@@ -745,11 +852,12 @@ elif visualization == "Trust in Institutions Over Time":
     st.header("Trust in Institutions Over Time")
 
     inst_options = {
-        "Bibi (ראש ממשלה)": "bibi",
-        "Tzahal (צה\"ל)": "tzahal",
-        "Mishtara (משטרה)": "mishtara",
-        "Memshala (ממשלה)": "memshala",
+        "Prime Minister (Benjamin Netanyahu)": "bibi",
+        "IDF (Israel Defense Forces)": "tzahal",
+        "Police": "mishtara",
+        "Government": "memshala",
     }
+
     chosen_insts = st.multiselect(
         "Select Institutions (top chart):",
         options=list(inst_options.keys()),
