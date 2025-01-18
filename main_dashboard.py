@@ -557,44 +557,38 @@ def create_solidarity_dashboard():
         }
     }
 
-    # Restrict to three predefined questions
+    # Rest of the setup code remains the same
     predefined_questions = [
         'מגדר',
         'האם את.ה או בן משפחה בדרגה ראשונה שלך לוקח חלק בלחימה?',
         'האם את.ה או בן משפחה בדרגה ראשונה שלך מתגורר בעוטף עזה או בגבול הצפון?'
     ]
 
-    # File selection
     selected_file = st.selectbox(
         'בחר סקר להצגה (Select survey to display):',
         list(file_options.keys())
     )
 
-    # Visualization type selection
     viz_type = st.radio(
         "בחר סוג תצוגה (Select visualization type):",
         ["Bar Chart", "Line Plot"]
     )
 
-    # Load selected data file
     try:
         df = pd.read_excel(file_options[selected_file])
-        df['date'] = pd.to_datetime(df['date'])  # Convert date column to datetime
+        df['date'] = pd.to_datetime(df['date'])
     except FileNotFoundError:
         st.error(f"File not found: {file_options[selected_file]}")
         return
 
-    # Let user select a predefined question
     selected_question = st.selectbox(
         'בחר שאלה להצגה (Select question to display):',
         predefined_questions
     )
 
-    # Filter data based on the selected question
     question_data = df[df['subject'] == selected_question].copy()
     question_data = question_data[question_data['sub_subject'] != 'Total']
 
-    # Get the full question text for response mapping
     full_question = df['q_full'].iloc[0] if not df.empty else None
 
     if viz_type == "Bar Chart":
@@ -604,8 +598,10 @@ def create_solidarity_dashboard():
 
 
 def create_bar_chart(question_data, full_question, selected_question, response_mappings):
-    # Restrict to numeric columns and calculate the mean
+    # Get numeric columns
     numeric_cols = [col for col in question_data.columns if col.startswith('a')]
+    numeric_cols.sort()  # Sort normally first
+
     chart_data = (
         question_data.groupby('sub_subject', as_index=False)[numeric_cols]
         .mean()
@@ -613,24 +609,22 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
 
     fig = go.Figure()
 
-    # Define colors
     option1_color = '#082f49'  # Dark blue
     option2_color = '#f97316'  # Orange
 
-    # Get response labels
+    # Get categories and explicitly reverse them
     if full_question in response_mappings:
-        categories = [response_mappings[full_question][f'a{i}']
-                      for i in range(1, len(numeric_cols) + 1)]
+        categories = [response_mappings[full_question][col] for col in numeric_cols]
     else:
         categories = [f'Response {i}' for i in range(1, len(numeric_cols) + 1)]
 
-    # Reverse the order of categories for the y-axis
+    # Explicitly reverse both categories and numeric columns
     categories = categories[::-1]
+    numeric_cols = numeric_cols[::-1]
 
-    # Add bars
+    # Add bars with reversed values
     for idx, row in chart_data.iterrows():
-        values = [row[f'a{i}'] * 100 for i in range(1, len(numeric_cols) + 1)]
-        values.reverse()  # Reverse the values to match the reversed y-axis categories
+        values = [row[col] * 100 for col in numeric_cols]
         fig.add_trace(go.Bar(
             name=row['sub_subject'],
             x=values,
@@ -665,12 +659,111 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
         font=dict(size=14),
         margin=dict(t=100, b=100, l=300, r=50),
         paper_bgcolor='white',
-        plot_bgcolor='rgba(248,249,250,0.5)'
+        plot_bgcolor='rgba(248,249,250,0.5)',
+        yaxis={'autorange': 'reversed'}  # This is the key change to invert the Y-axis
     )
 
     fig.update_xaxes(
         title_text='Percentage (%)',
         range=[0, 100],
+        gridcolor='rgba(0,0,0,0.1)',
+        showgrid=True,
+        tickformat='.1f',
+        zeroline=False
+    )
+
+    fig.update_yaxes(
+        title_text='',
+        gridcolor='rgba(0,0,0,0.1)',
+        showgrid=False,
+        automargin=True,
+        tickfont=dict(size=14)
+    )
+
+    st.plotly_chart(fig, use_container_width=False, key="bar_chart")
+def create_bar_chart(question_data, full_question, selected_question, response_mappings):
+    # Restrict to numeric columns and calculate the mean
+    numeric_cols = [col for col in question_data.columns if col.startswith('a')]
+    chart_data = (
+        question_data.groupby('sub_subject', as_index=False)[numeric_cols]
+        .mean()
+    )
+
+    fig = go.Figure()
+
+    # Define colors
+    option1_color = '#082f49'  # Dark blue
+    option2_color = '#f97316'  # Orange
+
+    # Get response labels
+    if full_question in response_mappings:
+        categories = [response_mappings[full_question][f'a{i}']
+                      for i in range(1, len(numeric_cols) + 1)]
+    else:
+        categories = [f'Response {i}' for i in range(1, len(numeric_cols) + 1)]
+
+    # Adjust category order for specific questions
+    if "מוטרד" in full_question:
+        categories = ['מוטרד' ,'מעט מוטרד', 'מוטרד במידה בינונית','לא מוטרד כלל', 'מוטרד מאוד']
+    elif "אופטימי" in full_question:
+        categories = ['אופטימי מאוד', 'די אופטימי', 'די פסימי', 'פסימי מאוד']
+
+    # Convert to categorical with explicit ordering
+    categories = pd.Categorical(categories, categories=categories, ordered=True)
+
+    # Reorder chart_data based on predefined category order
+    sorted_chart_data = []
+    for idx, row in chart_data.iterrows():
+        values = [row[f'a{i}'] * 100 for i in range(1, len(numeric_cols) + 1)]
+        sorted_chart_data.append(values)
+
+    # Add bars with text labels
+    for idx, row in chart_data.iterrows():
+        values = sorted_chart_data[idx]
+        fig.add_trace(go.Bar(
+            name=row['sub_subject'],
+            x=values,  # Ensure values are in correct order
+            y=categories,  # Use ordered categories
+            orientation='h',
+            marker_color=option1_color if idx == 0 else option2_color,
+            text=[f'{v:.1f}%' for v in values],  # Add percentage labels
+            textposition='outside',  # Position labels at the end of bars
+            textfont=dict(size=12),  # Set font size for labels
+            hovertemplate="<b>%{y}</b><br>" +
+                          row['sub_subject'] + ": %{x:.1f}%" +
+                          "<extra></extra>"
+        ))
+
+    # Update layout
+    fig.update_layout(
+        title={
+            'text': f'Survey Results by {selected_question}',
+            'y': 0.95,
+            'x': 0.5,
+            'xanchor': 'center',
+            'yanchor': 'top',
+            'font': {'size': 24}
+        },
+        barmode='group',
+        height=600,
+        showlegend=True,
+        legend={
+            'orientation': 'h',
+            'yanchor': 'bottom',
+            'y': -0.2,
+            'xanchor': 'center',
+            'x': 0.5
+        },
+        font=dict(size=14),
+        margin=dict(t=100, b=100, l=300, r=100),  # Increased right margin for labels
+        paper_bgcolor='white',
+        plot_bgcolor='rgba(248,249,250,0.5)',
+        uniformtext=dict(mode='hide', minsize=8)  # Ensure consistent label visibility
+    )
+
+    fig.update_xaxes(
+        title_text='Percentage (%)',
+        range=[0, 110],  # Increased range to accommodate labels
         gridcolor='rgba(0,0,0,0.1)',
         showgrid=True,
         tickformat='.1f',
@@ -827,16 +920,16 @@ def update_layout(fig, selected_question):
 st.title("Israeli Sentiments Dashboard")
 st.sidebar.title("Visualizations")
 
-visualization = st.sidebar.selectbox(
+visualization = st.sidebar.radio(
     "Choose Visualization",
     [
         "Rocket Strikes and Sentiments",
         "Significant Events Analysis",
         "Trust in Institutions Over Time",
         "Solidarity in Israeli Society"
-    ]
+    ],
+    label_visibility="visible"
 )
-
 institutions_data = load_data()
 months = institutions_data["months"]
 
