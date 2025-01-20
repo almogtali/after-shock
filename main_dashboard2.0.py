@@ -1,539 +1,984 @@
-import streamlit as st
-import plotly.graph_objects as go
-import pandas as pd
-import plotly.subplots as sp
-import plotly.express as px
+
+from streamlit_plotly_events import plotly_events
 import geopandas as gpd
-from datetime import date
-from pyngrok import ngrok
-import subprocess
 import json
-
-############################
-# --- FILE PATHS (EXAMPLE) -
-############################
-PM_DATA_PATH = "data_storage/bibi.xlsx"
-ARMY_DATA_PATH = "data_storage/tzal.xlsx"
-POLICE_DATA_PATH = "data_storage/mishtra.xlsx"
-GOVT_DATA_PATH = "data_storage/memshla.xlsx"
+import streamlit as st
+import pandas as pd
+import plotly.graph_objects as go
 
 
-def keep_only_political_consolidated(df):
+def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, memshala_data_path):
     """
-    1) Keep only rows where subject == "Political Consolidated"
-    2) Convert certain sub_subject values (e.g., "Moderate Right" -> "Right", etc.)
-    3) Keep only sub_subject in {"Right", "Center", "Left", "Refused"}
+    Creates a complete trust dashboard component for Streamlit.
+
+    Parameters:
+    bibi_data_path (str): Path to Prime Minister data Excel file
+    tzal_data_path (str): Path to IDF data Excel file
+    mishtara_data_path (str): Path to Police data Excel file
+    memshala_data_path (str): Path to Government data Excel file
     """
-    if 'subject' not in df.columns or 'sub_subject' not in df.columns:
-        return df
 
-    # 1. Keep only subject == "Political Consolidated"
-    df = df[df['subject'] == "Political Consolidated"].copy()
+    # ---- DATA PROCESSING FUNCTIONS ----
+    def prepare_monthly_data_cases(data, keyword, columns):
+        """Filter rows containing keyword and compute weighted trust score."""
+        filtered_data = data[data['q_full'].str.contains(keyword, case=False, na=False)].copy()
+        filtered_data['date'] = pd.to_datetime(filtered_data['date'], errors='coerce')
+        filtered_data.dropna(subset=['date'], inplace=True)
+        filtered_data['month_year'] = filtered_data['date'].dt.to_period('M')
 
-    # 2. Unify sub_subject values
-    replacements = {
-        "Moderate Right": "Right",
-        "Moderate Left": "Left",
-    }
-    df['sub_subject'] = df['sub_subject'].replace(replacements)
+        available_cols = [c for c in columns if c in filtered_data.columns]
+        if not available_cols:
+            return pd.DataFrame(columns=['month_year', 'trust_score'])
 
-    # 3. Keep only the final four categories
-    valid_stances = {"Right", "Center", "Left", "Refused"}
-    df = df[df['sub_subject'].isin(valid_stances)]
+        filtered_data[available_cols] = filtered_data[available_cols].apply(pd.to_numeric, errors='coerce')
+        weights = list(range(len(available_cols), 0, -1))
 
-    return df
+        filtered_data['trust_score'] = (
+                sum(filtered_data[c] * w for c, w in zip(available_cols, weights))
+                / filtered_data[available_cols].sum(axis=1)
+        )
 
+        return filtered_data
 
-def prepare_monthly_data_cases(data, keyword, columns):
-    """Prepare monthly trust data for institutions."""
-    # Implementation remains the same, just updated variable names
-    filtered_data = data[data['q_full'].str.contains(keyword, case=False, na=False)].copy()
-
-    filtered_data['date'] = pd.to_datetime(filtered_data['date'], errors='coerce')
-    filtered_data.dropna(subset=['date'], inplace=True)
-    filtered_data['month_year'] = filtered_data['date'].dt.to_period('M')
-
-    available_cols = [c for c in columns if c in filtered_data.columns]
-    if not available_cols:
-        return pd.DataFrame(columns=['month_year', 'trust_score'])
-
-    for col in available_cols:
-        filtered_data[col] = pd.to_numeric(filtered_data[col], errors='coerce')
-
-    weights = list(range(len(available_cols), 0, -1))
-    filtered_data['trust_score'] = (
-            sum(filtered_data[c] * w for c, w in zip(available_cols, weights))
-            / filtered_data[available_cols].sum(axis=1)
-    )
-
-    return filtered_data
-
-
-def aggregate_monthly(df):
-    """Groups by month_year and returns average trust_score per month."""
-    if df.empty:
-        return pd.DataFrame(columns=['month_year', 'trust_score'])
-    return (
-        df.groupby('month_year', as_index=False)['trust_score']
-        .mean()
-        .sort_values('month_year')
-    )
-
-
-def load_data():
-    """Load and prepare all institution data."""
-    try:
-        pm_data = pd.read_excel(PM_DATA_PATH)
-        army_data = pd.read_excel(ARMY_DATA_PATH)
-        police_data = pd.read_excel(POLICE_DATA_PATH)
-        govt_data = pd.read_excel(GOVT_DATA_PATH)
-    except Exception as e:
-        st.error(f"Error loading data: {e}")
-        st.stop()
-
-    # Prepare row-level data
-    pm_rows = prepare_monthly_data_cases(pm_data, keyword="Prime Minister", columns=["a1", "a2", "a3", "a4"])
-    army_rows = prepare_monthly_data_cases(army_data, keyword="IDF", columns=["a1", "a2", "a3", "a4"])
-    police_rows = prepare_monthly_data_cases(police_data, keyword="Police", columns=["a1", "a2", "a3", "a4"])
-    govt_rows = prepare_monthly_data_cases(govt_data, keyword="Government", columns=["a1", "a2", "a3", "a4"])
-
-    # Monthly aggregates
-    pm_monthly = aggregate_monthly(pm_rows)
-    army_monthly = aggregate_monthly(army_rows)
-    police_monthly = aggregate_monthly(police_rows)
-    govt_monthly = aggregate_monthly(govt_rows)
-
-    # Convert to string format for unified months
-    for df in [pm_monthly, army_monthly, police_monthly, govt_monthly]:
-        df['month_year_str'] = df['month_year'].astype(str)
-
-    # Get union of all months
-    all_months = sorted(set().union(
-        pm_monthly['month_year_str'],
-        army_monthly['month_year_str'],
-        police_monthly['month_year_str'],
-        govt_monthly['month_year_str']
-    ))
-
-    # Convert to dictionaries for lookup
-    def df_to_dict(df):
-        return dict(zip(df['month_year_str'], df['trust_score']))
-
-    pm_dict = df_to_dict(pm_monthly)
-    army_dict = df_to_dict(army_monthly)
-    police_dict = df_to_dict(police_monthly)
-    govt_dict = df_to_dict(govt_monthly)
-
-    # Build final score lists
-    pm_scores = [pm_dict.get(m, None) for m in all_months]
-    army_scores = [army_dict.get(m, None) for m in all_months]
-    police_scores = [police_dict.get(m, None) for m in all_months]
-    govt_scores = [govt_dict.get(m, None) for m in all_months]
-
-    return {
-        "pm_rows": pm_rows,
-        "army_rows": army_rows,
-        "police_rows": police_rows,
-        "govt_rows": govt_rows,
-        "months": all_months,
-        "pm_scores": pm_scores,
-        "army_scores": army_scores,
-        "police_scores": police_scores,
-        "govt_scores": govt_scores,
-    }
-
-
-def rocket_strikes_page():
-    """Rocket Strikes and Sentiments Page"""
-    st.header("Rocket Strikes and Regional Safety Sentiments")
+    def aggregate_monthly(df):
+        """Group by month and return average trust score per month."""
+        if df.empty:
+            return pd.DataFrame(columns=['month_year', 'trust_score'])
+        return df.groupby('month_year', as_index=False)['trust_score'].mean().sort_values('month_year')
 
     @st.cache_data
-    def load_strike_data():
-        gdf = gpd.read_file("hellel_data/Mechozot_all/Mechozot_all.shp")
-        counties_data = pd.read_csv("hellel_data/CountiesData.csv")
-        alarms_data = pd.read_csv("hellel_data/AlarmsData.csv")
+    def load_data():
+        """Load and process data from Excel files."""
+        try:
+            bibi_data = pd.read_excel(bibi_data_path)
+            tzal_data = pd.read_excel(tzal_data_path)
+            mishtara_data = pd.read_excel(mishtara_data_path)
+            memshala_data = pd.read_excel(memshala_data_path)
+        except Exception as e:
+            st.error(f"Error loading data: {e}")
+            st.stop()
 
-        # Convert dates
-        counties_data["Date"] = pd.to_datetime(counties_data["Date"], dayfirst=True).dt.date
-        alarms_data["date"] = pd.to_datetime(alarms_data["date"], errors="coerce", dayfirst=True).dt.date
-        alarms_data["time"] = pd.to_datetime(alarms_data["time"], errors="coerce").dt.time
+        # Process row-level data
+        bibi_rows = prepare_monthly_data_cases(bibi_data, keyword="ראש ממשלה", columns=["a1", "a2", "a3", "a4"])
+        tzal_rows = prepare_monthly_data_cases(tzal_data, keyword="צהל", columns=["a1", "a2", "a3", "a4"])
+        mish_rows = prepare_monthly_data_cases(mishtara_data, keyword="משטרה", columns=["a1", "a2", "a3", "a4"])
+        mems_rows = prepare_monthly_data_cases(memshala_data, keyword="ממשלה", columns=["a1", "a2", "a3", "a4"])
 
-        return gdf, counties_data, alarms_data
+        # Aggregate Monthly Data
+        bibi_monthly = aggregate_monthly(bibi_rows)
+        tzal_monthly = aggregate_monthly(tzal_rows)
+        mish_monthly = aggregate_monthly(mish_rows)
+        memshala_monthly = aggregate_monthly(mems_rows)
 
-    gdf, counties_data, alarms_data = load_strike_data()
+        for df in [bibi_monthly, tzal_monthly, mish_monthly, memshala_monthly]:
+            df['month_year_str'] = df['month_year'].astype(str)
 
-    # Time Period Selection
-    st.sidebar.write("Select Time Period")
-    start_date, end_date = st.sidebar.slider(
-        "Date Range",
-        value=(date(2023, 10, 1), date(2024, 12, 31)),
-        format="YYYY-MM",
-        key="time_range"
-    )
+        all_months = sorted(set(bibi_monthly['month_year_str'])
+                            .union(tzal_monthly['month_year_str'])
+                            .union(mish_monthly['month_year_str'])
+                            .union(memshala_monthly['month_year_str']))
 
-    # Filter data
-    filtered_counties = counties_data[
-        (counties_data["Date"] >= start_date) &
-        (counties_data["Date"] <= end_date)
-        ]
+        def df_to_dict(df):
+            return dict(zip(df['month_year_str'], df['trust_score']))
 
-    filtered_alarms = alarms_data[
-        (alarms_data["date"] >= filtered_counties["Date"].min() - pd.Timedelta(weeks=1)) &
-        (alarms_data["date"] <= end_date)
-        ]
+        return {
+            "bibi_scores": df_to_dict(bibi_monthly),
+            "tzal_scores": df_to_dict(tzal_monthly),
+            "mishtara_scores": df_to_dict(mish_monthly) if not mish_monthly.empty else {},
+            "memshala_scores": df_to_dict(memshala_monthly),
+            "months": all_months,
+            "bibi_rows": bibi_rows,
+            "tzal_rows": tzal_rows,
+            "mishtara_rows": mish_rows,
+            "memshala_rows": mems_rows
+        }
 
-    # Calculate safety percentages
-    feel_safe = (
-        filtered_counties.groupby("machoz")
-        .apply(lambda x: (x.iloc[:, 2:4].sum(axis=1).mean() * 100).round(3))
-        .reset_index(name="feel_safe_percentage")
-    )
+    def plot_scatter_chart():
+        scatter_data = []
+        fixed_size = 60
 
-    # Calculate detailed responses per region
-    column_avgs = (
-        filtered_counties.groupby("machoz")
-        .apply(lambda x: (x.iloc[:, 2:8].mean() * 100).round(decimals=3))
-        .reset_index()
-    )
+        for inst, name in institutions.items():
+            if f"{inst}_scores" not in data:
+                continue
 
-    # Merge data
-    curr_data = pd.merge(feel_safe, column_avgs, on="machoz")
-    merged_gdf = gdf.merge(curr_data, on="machoz", how="left").to_crs(epsg=4326)
+            avg_trust = sum(data[f"{inst}_scores"].values()) / len(data[f"{inst}_scores"]) if data[
+                f"{inst}_scores"] else 0
 
-    # Create map visualization
-    fig = create_rocket_strikes_map(merged_gdf, filtered_alarms)
-    st.plotly_chart(fig, use_container_width=True)
+            scatter_data.append({
+                "Institution": name,
+                "Trust Score": avg_trust,
+                "Key": inst,
+                "Size": fixed_size
+            })
 
+        scatter_df = pd.DataFrame(scatter_data)
 
-def create_rocket_strikes_map(merged_gdf, filtered_alarms):
-    """Create the rocket strikes map visualization"""
-    # Create choropleth layer
-    choropleth = go.Choroplethmapbox(
-        geojson=json.loads(merged_gdf.to_json()),
-        locations=merged_gdf["machoz"],
-        featureidkey="properties.machoz",
-        z=merged_gdf["feel_safe_percentage"],
-        colorscale="RdBu",
-        colorbar=dict(title="Feel Safe (%)"),
-        marker_opacity=0.9,
-        hovertemplate=(
-                "%{properties.machoz}<br>" +
-                "Don't know: %{properties.Unknown}<br>" +
-                "Low: %{properties.Low}<br>" +
-                "Very Low: %{properties.Very_Low}<br>" +
-                "Medium: %{properties.Medium}<br>" +
-                "High: %{properties.High}<br>" +
-                "Very High: %{properties.Very_High}"
+        fig = go.Figure()
+        for _, row in scatter_df.iterrows():
+            fig.add_trace(go.Scatter(
+                x=[row["Institution"]],
+                y=[row["Trust Score"]],
+                mode="markers+text",
+                marker=dict(
+                    size=fixed_size,
+                    color=color_map[row["Key"]],
+                    line=dict(width=2, color="white")
+                ),
+                text=f"{row['Trust Score']:.2f}",  # Only show trust score
+                textposition="middle center",  # Center the text in the bubble
+                hoverinfo="none"  # Remove hover information
+            ))
+
+        fig.update_layout(
+            title="Trust Scores by Institution",
+            yaxis=dict(title="Trust Score (1-5)", range=[1, 5]),
+            xaxis=dict(title="Institution"),
+            showlegend=False
         )
-    )
+        return fig
 
-    # Create scatter layer for strikes
-    scatter = go.Scattermapbox(
-        lat=filtered_alarms["outLat"],
-        lon=filtered_alarms["outLong"],
-        mode="markers",
-        marker=dict(size=5, color="red"),
-        text=filtered_alarms["data"],
-        hoverinfo="text"
-    )
+    def create_demographic_time_series(selected_inst_key):
+        trust_scores = data.get(f"{selected_inst_key}_rows", pd.DataFrame())
 
-    # Combine layers
-    fig = go.Figure(data=[choropleth, scatter])
+        if trust_scores.empty:
+            st.warning(f"No data available for {selected_inst_key}")
+            return None
 
-    # Update layout
-    fig.update_layout(
-        mapbox=dict(
-            style="carto-positron",
-            center={"lat": 31.5, "lon": 35},
-            zoom=7
-        ),
-        width=900,
-        height=750,
-        title="Rocket Strikes and Regional Safety Sentiments"
-    )
+        institution_name = institutions.get(selected_inst_key, "Unknown Institution")
 
-    return fig
+        demo_mapping = {
+            "District": {
+                "North": {"hebrew": "צפון", "color": "rgb(0, 128, 255)"},
+                "Haifa": {"hebrew": "חיפה", "color": "rgb(255, 140, 0)"},
+                "Center": {"hebrew": "מרכז", "color": "rgb(50, 205, 50)"},
+                "Tel Aviv": {"hebrew": "תל אביב", "color": "rgb(255, 0, 255)"},
+                "Jerusalem": {"hebrew": "ירושלים", "color": "rgb(255, 215, 0)"},
+                "Judea & Samaria": {"hebrew": "יהודה ושומרון", "color": "rgb(128, 0, 128)"},
+                "South": {"hebrew": "דרום", "color": "rgb(220, 20, 60)"}
+            },
+            "Religiousness": {
+                "Ultra-Orthodox": {"hebrew": "חרדי", "color": "rgb(0, 0, 139)"},
+                "Religious": {"hebrew": "דתי", "color": "rgb(0, 0, 205)"},
+                "Traditional": {"hebrew": "מסורתי", "color": "rgb(30, 144, 255)"},
+                "Secular": {"hebrew": "חילוני", "color": "rgb(135, 206, 250)"}
+            },
+            "Political stance": {
+                "Right": "ימין",
+                "Center": "מרכז",
+                "Left": "שמאל",
+                "Refuses to Answer": "מסרב"
+            },
+            "Age": {
+                "75+": {"hebrew": "75+", "color": "rgb(139, 0, 0)"},
+                "65-74": {"hebrew": "65-74", "color": "rgb(178, 34, 34)"},
+                "55-64": {"hebrew": "55-64", "color": "rgb(205, 92, 92)"},
+                "45-54": {"hebrew": "45-54", "color": "rgb(240, 128, 128)"},
+                "35-44": {"hebrew": "35-44", "color": "rgb(250, 128, 114)"},
+                "25-34": {"hebrew": "25-34", "color": "rgb(255, 160, 122)"},
+                "18-24": {"hebrew": "18-24", "color": "rgb(255, 192, 203)"}
+            }
+        }
+
+        demo_choice = st.selectbox("Choose a demographic dimension:", list(demo_mapping.keys()))
+
+        fig = go.Figure()
+
+        if demo_choice in ["Religiousness", "Age", "District"]:
+            selected_map = demo_mapping[demo_choice]
+            for eng_label, value in selected_map.items():
+                sub_data = trust_scores[trust_scores["sub_subject"] == value["hebrew"]].copy()
+
+                if not sub_data.empty:
+                    monthly_avg = sub_data.groupby("month_year")["trust_score"].mean().reset_index()
+                    monthly_avg["month_year_str"] = monthly_avg["month_year"].astype(str)
+
+                    fig.add_trace(go.Scatter(
+                        x=monthly_avg["month_year_str"],
+                        y=monthly_avg["trust_score"],
+                        name=eng_label,
+                        mode="lines+markers",
+                        connectgaps=True,
+                        line=dict(width=2, color=value["color"]),
+                        marker=dict(size=8, color=value["color"])
+                    ))
+        else:
+            selected_map = {k: v for k, v in demo_mapping[demo_choice].items()}
+            for eng_label, hebrew_label in selected_map.items():
+                sub_data = trust_scores[trust_scores["sub_subject"] == hebrew_label].copy()
+
+                if not sub_data.empty:
+                    monthly_avg = sub_data.groupby("month_year")["trust_score"].mean().reset_index()
+                    monthly_avg["month_year_str"] = monthly_avg["month_year"].astype(str)
+
+                    fig.add_trace(go.Scatter(
+                        x=monthly_avg["month_year_str"],
+                        y=monthly_avg["trust_score"],
+                        name=eng_label,
+                        mode="lines+markers",
+                        connectgaps=True,
+                        line=dict(width=2),
+                        marker=dict(size=8)
+                    ))
+
+        fig.update_layout(
+            title=f"Trust Scores for {institution_name} Over Time by {demo_choice}",
+            xaxis_title="Month",
+            yaxis_title="Trust Score",
+            yaxis_range=[1, 5],
+            hovermode="x unified",
+            legend=dict(
+                orientation="h",  # Horizontal legend
+                yanchor="top",  # Anchoring to the top of the legend box
+                y=-0.2,  # Moving the legend below the plot
+                xanchor="center",
+                x=0.5,
+                bgcolor="rgba(255, 255, 255, 0.8)"
+            ),
+            margin=dict(b=100)  # Adding space at the bottom for the legend
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ---- MAIN DASHBOARD LAYOUT ----
+    # st.title("Israeli Sentiments Dashboard")
+    # st.subheader("Trust in Institutions Over Time")
+
+    # Load Data
+    data = load_data()
+    months = data["months"]
+
+    # Institution Mapping
+    institutions = {
+        "bibi": "Prime Minister",
+        "tzal": "IDF",
+        "mishtara": "Police",
+        "memshala": "Government"
+    }
+
+    # Color Mapping
+    color_map = {
+        "bibi": "#FF5733",
+        "tzal": "#2ECC71",
+        "mishtara": "#3498DB",
+        "memshala": "#F39C12"
+    }
+
+    # Interactive event capture
+    selected_point = plotly_events(plot_scatter_chart(), click_event=True)
+
+    if selected_point:
+        selected_inst = selected_point[0]["x"]
+        selected_inst_key = next((key for key, val in institutions.items() if val == selected_inst), None)
+        create_demographic_time_series(selected_inst_key)
 
 
-def trust_in_institutions_page():
-    """Trust in Institutions Page"""
-    st.header("Trust in Institutions Over Time")
+
+
+def rocket_strikes_map():
+    # New File Locations
+    data_dir = "C:/Users/liamo/PycharmProjects/visu_project/hellel_data"
+    surveyCSV = f"{data_dir}/AggCountiesData.csv"
+    alarmsCSV = f"{data_dir}/AggAlarmsData.csv"
+    countiesSHP = f"{data_dir}/Mechozot_all/Mechozot_all.shp"
+
+    # Load the data using the new load_data function
+    @st.cache_data
+    def load_data(surveyCSV, alarmsCSV, countiesSHP):
+        gdf = gpd.read_file(countiesSHP)
+        data = pd.read_csv(surveyCSV)
+        alarms = pd.read_csv(alarmsCSV)
+
+        # Convert date columns to appropriate types
+        data["Date"] = pd.to_datetime(data["Date"], errors='coerce').dt.date  # Ensure consistent parsing
+        data["Year-Month"] = pd.to_datetime(data["Year-Month"], errors='coerce').dt.to_period('M')
+        alarms["Year-Month"] = pd.to_datetime(alarms["Year-Month"], errors='coerce').dt.to_period('M')
+
+        # Convert to English names
+        mapping_dict = {
+            'מרכז': "Center",
+            "תל אביב": "Tel-Aviv",
+            "יהודה ושומרון": "Judea and Samaria",
+            "ירושלים": "Jerusalem",
+            "דרום": "South",
+            "צפון": "North",
+            "חיפה": "Haifa"
+        }
+        gdf["machoz"] = gdf["machoz"].replace(mapping_dict)
+
+        return gdf, data, alarms
 
     # Load data
-    data = load_data()
+    gdf, data, alarms = load_data(surveyCSV, alarmsCSV, countiesSHP)
 
-    # Institution selection
-    inst_options = {
-        "Prime Minister": "pm",
-        "IDF": "army",
-        "Police": "police",
-        "Government": "govt"
-    }
+    # Generate a list of discrete months for the slider
+    start_date = pd.Timestamp(2023, 10, 1).date()
+    end_date = pd.Timestamp(2024, 11, 30).date()
+    months = pd.date_range(start=start_date, end=end_date, freq='MS').to_period('M')
 
-    chosen_insts = st.multiselect(
-        "Select Institutions:",
-        options=list(inst_options.keys()),
-        default=list(inst_options.keys())
+    # Sidebar: Time Period Selection using discrete months
+    st.sidebar.write("Select Time Period")
+    selected_range = st.sidebar.select_slider(
+        key="slider1",
+        label="Select Period",
+        options=list(months),
+        value=(months[0], months[-1])  # Default to full range
     )
 
-    if not chosen_insts:
-        st.warning("Please select at least one institution.")
-        return
+    # Checkbox for showing alarms
+    show_alarms = st.sidebar.checkbox(label="Show Alarms", value=False)
 
-    selected_keys = [inst_options[i] for i in chosen_insts]
+    # Filter data based on the selected range
+    filtered_data = data[
+        (data['Year-Month'] >= selected_range[0]) &
+        (data['Year-Month'] <= selected_range[1])
+    ]
 
-    # Create main time series chart
-    main_chart = create_trust_time_chart(data, selected_keys)
-    st.plotly_chart(main_chart, use_container_width=True)
+    if not filtered_data.empty:  # Ensure there is data to avoid errors
+        # Filter alarms data based on selected period
+        filtered_alarms = alarms[
+            (alarms["Year-Month"] >= selected_range[0]) &
+            (alarms["Year-Month"] <= selected_range[1] + pd.offsets.MonthEnd())
+        ]
 
-    # Demographic breakdown
-    st.subheader("Trust by Demographics")
-    demo_choice = st.selectbox(
-        "Select Demographic Category:",
-        ["Gender", "Region", "Religious Observance", "Political Stance", "Age Group"]
-    )
+        # Group alarms data and calculate sum for period
+        grouped_alarms = filtered_alarms.groupby(['data', 'outLat', 'outLong'], as_index=False)['count'].sum().round(2)
 
-    # Create demographic breakdown chart
-    demo_chart = create_demographic_chart(data, demo_choice, selected_keys)
-    st.plotly_chart(demo_chart, use_container_width=True)
+        # Group survey data and calculate percentage per answer per county
+        avg_by_machoz = (
+            filtered_data.groupby("machoz")
+            .apply(lambda x: x.iloc[:, 2:].mean().round(2))
+            .reset_index()
+            .rename(columns={"index": "machoz"})
+        )
 
-
-def create_trust_time_chart(data, selected_institutions):
-    """Create main time series chart for trust in institutions"""
-    colors = {
-        'pm': '#1f77b4',
-        'army': '#2ca02c',
-        'police': '#d62728',
-        'govt': '#ff7f0e'
-    }
-
-    inst_to_scores = {
-        'pm': data['pm_scores'],
-        'army': data['army_scores'],
-        'police': data['police_scores'],
-        'govt': data['govt_scores']
-    }
-
-    inst_names = {
-        'pm': 'Prime Minister',
-        'army': 'IDF',
-        'police': 'Police',
-        'govt': 'Government'
-    }
-
-    fig = go.Figure()
-
-    for inst in selected_institutions:
-        y_vals = inst_to_scores[inst]
-        fig.add_trace(go.Scatter(
-            x=data['months'],
-            y=y_vals,
-            mode="lines+markers",
-            name=inst_names[inst],
-            line=dict(color=colors.get(inst, "#000"), width=2),
-            marker=dict(size=6),
-            hovertemplate=(
-                    f"<b>{inst_names[inst]}</b><br>" +
-                    "Month: %{x}<br>" +
-                    "Trust Score: %{y:.2f}<extra></extra>"
+        # Assuming 'feel_safe' is one of the columns in avg_by_machoz
+        # If it's calculated differently, adjust accordingly
+        if 'feel_safe' not in avg_by_machoz.columns:
+            # Example calculation if 'feel_safe' needs to be computed
+            # Adjust the columns as per your actual data
+            feel_safe = (
+                filtered_data.groupby("machoz").apply(
+                    lambda x: (x.iloc[:, 2:4].sum(axis=1).mean() * 100).round(2)
+                ).reset_index(name="feel_safe")
             )
-        ))
+            avg_by_machoz = avg_by_machoz.merge(feel_safe, on="machoz", how="left")
 
-    fig.update_layout(
-        title="Trust in Institutions Over Time",
-        xaxis_title="Month",
-        yaxis_title="Trust Score",
-        yaxis=dict(range=[0, 5]),
-        legend=dict(x=1.0, y=1.0, xanchor='left', yanchor='top'),
-        margin=dict(l=60, r=60, t=80, b=80),
-        height=450,
-    )
+        # Merge survey data with GeoDataFrame
+        merged_gdf = gdf.merge(avg_by_machoz, on="machoz", how="left").to_crs(epsg=4326)
 
-    return fig
+        # Create Choropleth Map
+        choropleth = go.Choroplethmapbox(
+            geojson=json.loads(merged_gdf.to_json()),
+            locations=merged_gdf["machoz"],
+            featureidkey="properties.machoz",
+            z=merged_gdf["feel_safe"],
+            zmin=merged_gdf["feel_safe"].min(),
+            zmax=merged_gdf["feel_safe"].max(),
+            colorscale="Blues",
+            colorbar=dict(title="Feel Secure (%)"),
+            marker=dict(opacity=0.7),
+            hovertext=merged_gdf.apply(
+                lambda row: (
+                    f"<b>Sense of Personal Security in {row['machoz']} District</b><br>"
+                    f"Don't know: {row.get('dont know', 'N/A')}%<br>"
+                    f"Low: {row.get('low', 'N/A')}%<br>"
+                    f"Very Low: {row.get('very low', 'N/A')}%<br>"
+                    f"Medium: {row.get('medium', 'N/A')}%<br>"
+                    f"High: {row.get('high', 'N/A')}%<br>"
+                    f"Very High: {row.get('very high', 'N/A')}%"
+                ),
+                axis=1
+            ),
+            hoverinfo="text",
+        )
 
+        # Create Scatter Map for Alarms
+        scatter = go.Scattermapbox(
+            lat=grouped_alarms["outLat"],
+            lon=grouped_alarms["outLong"],
+            mode="markers",
+            marker=go.scattermapbox.Marker(
+                size=5,
+                opacity=0.7,
+                color=grouped_alarms["count"],
+                colorscale=[
+                    [0, '#FF002B'],
+                    [0.5, '#81001C'],
+                    [1, '#000000']
+                ],
+                cmin=max(grouped_alarms["count"].mean() - grouped_alarms["count"].std()*2, 0),  # Minimum value for color range
+                cmax=grouped_alarms["count"].mean() + grouped_alarms["count"].std()*2,  # Maximum value for color range
+                showscale=True,  # Show the color scale legend
+                colorbar=dict(
+                    title="Alarms Amount",
+                    x=1.35,
+                ),
+            ),
+            text=grouped_alarms.apply(lambda row: f"Data: {row['data']}<br>Count: {row['count']}", axis=1),
+            hoverinfo="text",
+        )
 
-def create_demographic_chart(data, demo_choice, selected_institutions):
-    """Create chart showing trust breakdown by demographic category"""
-    demo_mappings = {
-        "Gender": {
-            "Male": "Male",
-            "Female": "Female"
+        # Initialize Figure
+        fig = go.Figure()
+        fig.add_trace(choropleth)
+
+        if show_alarms:
+            fig.add_trace(scatter)
+
+        # Update Layout
+        fig.update_layout(
+            mapbox=dict(
+                style="carto-positron",
+                center={"lat": 31.45, "lon": 35},
+                zoom=6.5,
+            ),
+            width=900,  # Adjusted width for better visibility
+            height=750,  # Adjusted height for better visibility
+            title="Rocket Strikes and Personal Safety Sentiments",
+            margin={"r":0,"t":50,"l":0,"b":0}
+        )
+
+        # Display the map
+        st.plotly_chart(fig, use_container_width=True)
+
+    else:
+        st.warning("No data available for the selected time range. Please select a wider period.")
+
+def create_solidarity_dashboard():
+    """
+    This function creates the Solidarity Dashboard with an English user interface.
+    Users can select surveys, questions, and visualization types to view the data.
+    """
+    # Mapping of English question labels to Hebrew question strings
+    question_mapping = {
+        'Are you or a first-degree family member involved in combat?': 'האם את.ה או בן משפחה בדרגה ראשונה שלך לוקח חלק בלחימה?',
+        'Are you or a first-degree family member residing near the Gaza envelope or northern border?': 'האם את.ה או בן משפחה בדרגה ראשונה שלך מתגורר בעוטף עזה או בגבול הצפון?',
+        'Gender': 'מגדר'
+    }
+
+    # File selection with predefined questions for each file (English labels)
+    file_options = {
+        'Has there been a change in the sense of solidarity in Israeli society at this time?': 'solidarity_data/solidarity.xlsx',
+        'How concerned are you about Israel\'s social situation on the day after the war?': 'solidarity_data/matzv_chvrati.xlsx',
+        'How optimistic are you about Israeli society\'s ability to recover from the crisis and grow?': 'solidarity_data/mashber.xlsx'
+    }
+
+    # Define response mappings for each question (remains in Hebrew)
+    response_mappings = {
+        'עד כמה את.ה מוטרד.ת או לא מוטרד.ת ממצבה החברתי של ישראל ביום שאחרי המלחמה דרג בסולם של 1-5, כאשר 5 = מוטרד מאד ו - 1 = לא מוטרד כלל': {
+            'a1': 'Not concerned at all',
+            'a2': 'Slightly concerned',
+            'a3': 'Moderately concerned',
+            'a4': 'Concerned',
+            'a5': 'Very concerned'
         },
-        "Region": {
-            "North": "North",
-            "Haifa": "Haifa",
-            "Central": "Central",
-            "Tel Aviv": "Tel Aviv",
-            "Jerusalem": "Jerusalem",
-            "West Bank": "West Bank",
-            "South": "South"
+        'עד כמה אתה אופטימי ביחס ליכולתה של החברה הישראלית להתאושש מהמשבר ולצמוח': {
+            'a1': 'Very pessimistic',
+            'a2': 'Somewhat pessimistic',
+            'a3': 'Somewhat optimistic',
+            'a4': 'Very optimistic'
         },
-        "Religious Observance": {
-            "Secular": "Secular",
-            "Traditional": "Traditional",
-            "Religious": "Religious",
-            "Ultra-Orthodox": "Ultra-Orthodox"
-        },
-        "Political Stance": {
-            "Right": "Right",
-            "Center": "Center",
-            "Left": "Left",
-            "Refused": "Refused"
-        },
-        "Age Group": {
-            "18-24": "18-24",
-            "25-34": "25-34",
-            "35-44": "35-44",
-            "45-54": "45-54",
-            "55-64": "55-64",
-            "65-74": "65-74",
-            "75+": "75+"
+        'האם חל שינוי בתחושת הסולידריות בחברה הישראלית בעת הזו': {
+            'a1': 'Solidarity has strengthened significantly',
+            'a2': 'Solidarity has somewhat strengthened',
+            'a3': 'No change in solidarity',
+            'a4': 'Solidarity has somewhat decreased',
+            'a5': 'Solidarity has significantly decreased'
         }
     }
 
-    colors = {
-        'Male': '#1f77b4',
-        'Female': '#ff7f0e',
-        'Right': '#2ca02c',
-        'Center': '#d62728',
-        'Left': '#9467bd',
-        'Refused': '#8c564b',
+    # Predefined questions in English
+    predefined_questions = list(question_mapping.keys())
+
+    # Title of the Dashboard
+    st.title("Solidarity Dashboard")
+
+    # File selection dropdown
+    selected_file = st.selectbox(
+        'Select Subject to Display:',
+        list(file_options.keys())
+    )
+
+    # Create two columns for the controls
+    col1, col2 = st.columns([0.8,2.2])
+
+    # Place visualization type selector in the first column
+    with col1:
+        viz_type = st.radio(
+            "Select Visualization Type:",
+            ["Aggregated results", "Results over time"]
+        )
+
+    # Place segmentation selector in the second column
+    with col2:
+        selected_question = st.selectbox(
+            'Select segmentation to display:',
+            predefined_questions
+        )
+
+    # Get the Hebrew question string based on the selected English label
+    hebrew_question = question_mapping.get(selected_question)
+
+    # Data Loading with Error Handling
+    try:
+        df = pd.read_excel(file_options[selected_file])
+        df['date'] = pd.to_datetime(df['date'])
+    except FileNotFoundError:
+        st.error(f"The selected survey file '{selected_file}' was not found. Please check the file path.")
+        return
+    except Exception as e:
+        st.error(f"An error occurred while loading the data: {e}")
+        return
+
+    # Data Filtering
+    if hebrew_question:
+        question_data = df[df['subject'] == hebrew_question].copy()
+        question_data = question_data[question_data['sub_subject'] != 'Total']
+    else:
+        st.error("Selected question mapping not found.")
+        return
+
+    full_question = df['q_full'].iloc[0] if not df.empty else None
+
+    # Visualization Selection
+    if viz_type == "Aggregated results":
+        create_bar_chart(question_data, full_question, selected_question, response_mappings)
+    else:
+        create_line_plot(question_data, full_question, selected_question, response_mappings)
+
+# Add this mapping at the top of your script
+QUESTION_SHORT_FORMS = {
+    'Are you or a first-degree family member involved in combat?': 'Combat involvement (family)',
+    'Are you or a first-degree family member residing near the Gaza envelope or northern border?': 'Border residence (family)',
+    'How concerned are you about Israel\'s social situation on the day after the war?': 'Post-war concerns',
+    'How optimistic are you about Israeli society\'s ability to recover from the crisis and grow?': 'Recovery optimism',
+    'Has there been a change in the sense of solidarity in Israeli society at this time?': 'Solidarity change'
+}
+
+def create_bar_chart(question_data, full_question, selected_question, response_mappings):
+    """
+    Creates a horizontal bar chart based on the selected question data with x-axis range capped at 70%.
+    """
+    # Identify numeric columns representing response options (e.g., a1, a2, ...)
+    numeric_cols = [col for col in question_data.columns if col.startswith('a')]
+    numeric_cols.sort()  # Ensure columns are sorted
+
+    # Group data by 'sub_subject' and calculate the mean for each response option
+    chart_data = (
+        question_data.groupby('sub_subject', as_index=False)[numeric_cols]
+        .mean()
+    )
+
+    fig = go.Figure()
+
+    # Define colors for different groups
+    option1_color = '#082f49'  # Dark blue
+    option2_color = '#f97316'  # Orange
+
+    # Map response codes to descriptive labels using response_mappings
+    if full_question in response_mappings:
+        categories = [response_mappings[full_question][col] for col in numeric_cols]
+    else:
+        categories = [f'Response {i}' for i in range(1, len(numeric_cols) + 1)]
+
+    # Reverse the order of categories and numeric columns for better visualization
+    categories = categories[::-1]
+    numeric_cols = numeric_cols[::-1]
+
+    # Add horizontal bars for each sub_subject
+    for idx, row in chart_data.iterrows():
+        values = [row[col] * 100 for col in numeric_cols]  # Convert to percentages
+        text_values = [f"{v:.1f}%" for v in values]  # Format text with percentages
+
+        fig.add_trace(go.Bar(
+            name=row['sub_subject'],
+            x=values,
+            y=categories,
+            text=text_values,  # Add percentage labels
+            textposition='outside',  # Place labels outside bars
+            textfont=dict(size=14),  # Increase label font size
+            constraintext='none',  # Prevent text from being cut off
+            cliponaxis=False,  # Prevent clipping of labels
+            orientation='h',
+            marker_color=option1_color if idx == 0 else option2_color,
+            hovertemplate="<b>%{y}</b><br>" +
+                          row['sub_subject'] + ": %{x:.1f}%" +
+                          "<extra></extra>"
+        ))
+
+    # Get shorter version of the question for the title
+    short_question = QUESTION_SHORT_FORMS.get(selected_question, selected_question)
+    title_text = f"{short_question} aggregated"
+
+    # Update layout with shorter title
+    fig.update_layout(
+        title={
+            'text': title_text,
+            'y': 0.95,
+            'x': 0.5,
+            'xanchor': 'center',
+            'yanchor': 'top',
+            'font': {'size': 24}
+        },
+        barmode='group',
+        height=700,
+        width=1200,
+        showlegend=True,
+        legend={
+            'orientation': 'h',
+            'yanchor': 'bottom',
+            'y': -0.2,
+            'xanchor': 'center',
+            'x': 0.5
+        },
+        font=dict(size=16),
+        # Increase margins to accommodate labels
+        margin=dict(t=80, b=200, l=100, r=200),
+        paper_bgcolor='white',
+        plot_bgcolor='rgba(248,249,250,0.5)',
+        yaxis={'autorange': 'reversed'},
+        # Modified x-axis range to cap at 70%
+        xaxis=dict(
+            range=[-5, 62],  # Changed from 105 to 70
+            showgrid=True,
+            dtick=10  # Add gridlines every 10%
+        )
+    )
+
+    # Ensure full width in Streamlit
+    st.plotly_chart(fig, use_container_width=True, key="bar_chart")
+
+
+def create_line_plot(question_data, full_question, selected_question, response_mappings):
+    """
+    Creates a line plot showing specific aggregations for different questions.
+    """
+    # Define aggregation rules based on the question
+    aggregations = {
+        'האם חל שינוי בתחושת הסולידריות בחברה הישראלית בעת הזו': {
+            'name': 'Solidarity has strengthened',
+            'columns': ['a1', 'a2']
+        },
+        'עד כמה אתה אופטימי ביחס ליכולתה של החברה הישראלית להתאושש מהמשבר ולצמוח': {
+            'name': 'Optimistic',
+            'columns': ['a3', 'a4']
+        },
+        'עד כמה את.ה מוטרד.ת או לא מוטרד.ת ממצבה החברתי של ישראל ביום שאחרי המלחמה דרג בסולם של 1-5, כאשר 5 = מוטרד מאד ו - 1 = לא מוטרד כלל': {
+            'name': 'Concerned',
+            'columns': ['a4', 'a5']
+        }
+    }
+
+    # Demographic pairs and their translations
+    demographic_pairs = {
+        'מגדר': {
+            'נקבה': 'Female',
+            'זכר': 'Male'
+        },
+        'גרים בצפון/עוטף': {
+            'כן': 'Living in North/Gaza Envelope',
+            'לא': 'Not Living in North/Gaza Envelope'
+        },
+        'משפחה של לוחמים': {
+            'כן': 'Family of Combatants',
+            'לא': 'Not Family of Combatants'
+        }
+    }
+
+    # Color mapping with distinctive colors
+    color_mapping = {
+        'Female': '#8B0000',  # Dark red
+        'Male': '#00008B',  # Dark blue
+        'Living in North/Gaza Envelope': '#006400',  # Dark green
+        'Not Living in North/Gaza Envelope': '#4B0082',  # Dark purple
+        'Family of Combatants': '#654321',  # Dark brown
+        'Not Family of Combatants': '#333333'  # Dark gray
     }
 
     fig = go.Figure()
 
-    selected_mapping = demo_mappings[demo_choice]
+    # Get aggregation rules for the current question
+    agg_config = aggregations.get(full_question)
+    if agg_config:
+        aggregated_data = question_data.copy()
 
-    for inst in selected_institutions:
-        # Get appropriate dataset
-        if inst == 'pm':
-            df = data['pm_rows']
-        elif inst == 'army':
-            df = data['army_rows']
-        elif inst == 'police':
-            df = data['police_rows']
-        elif inst == 'govt':
-            df = data['govt_rows']
-        else:
-            continue
+        # Calculate the sum of specified columns
+        aggregated_data['agg_value'] = aggregated_data[agg_config['columns']].sum(axis=1)
 
-        demo_column = 'sub_subject'  # Adjust based on your actual column name
+        # Plot line for each demographic group
+        for sub_subject in aggregated_data['sub_subject'].unique():
+            sub_data = aggregated_data[aggregated_data['sub_subject'] == sub_subject].sort_values('date')
 
-        for display_label, data_value in selected_mapping.items():
-            df_filtered = df[df[demo_column] == data_value].copy()
-            if df_filtered.empty:
-                continue
+            # Find the correct English translation for the demographic group
+            english_name = None
+            for demo_group in demographic_pairs.values():
+                if sub_subject in demo_group:
+                    english_name = demo_group[sub_subject]
+                    break
 
-            monthly_avg = (
-                df_filtered.groupby('month_year', as_index=False)['trust_score']
-                .mean()
-                .sort_values('month_year')
+            if english_name:
+                fig.add_trace(go.Scatter(
+                    x=sub_data['date'],
+                    y=sub_data['agg_value'] * 100,  # Convert to percentages
+                    name=english_name,
+                    mode='lines+markers',
+                    line=dict(color=color_mapping[english_name], width=2),
+                    marker=dict(size=8),
+                    hovertemplate=(
+                            "Date: %{x|%Y-%m-%d}<br>" +
+                            f"{agg_config['name']}: %{{y:.1f}}%<br>" +
+                            "<extra></extra>"
+                    )
+                ))
+
+        # Get shorter version of the question for the title
+        short_question = response_mappings.get(selected_question, selected_question)
+        title_text = f"{short_question} - Over Time"
+
+        # Get data range for y-axis
+        y_values = []
+        for trace in fig.data:
+            y_values.extend(trace.y)
+        min_y = max(min(y_values) - 5, 0)  # Don't go below 0
+        max_y = min(max(y_values) + 5, 100)  # Don't exceed 100
+
+        # Get data range for x-axis
+        dates = []
+        for trace in fig.data:
+            dates.extend(trace.x)
+        min_date = min(dates)
+        max_date = max(dates)
+
+        # Update layout with optimized ranges and more date ticks
+        fig.update_layout(
+            title={
+                'text': title_text,
+                'y': 0.95,
+                'x': 0.5,
+                'xanchor': 'center',
+                'yanchor': 'top',
+                'font': {'size': 24}
+            },
+            xaxis_title="Date",
+            yaxis_title="Percentage (%)",
+            height=600,
+            showlegend=True,
+            legend={
+                'orientation': 'h',  # Set legend to horizontal
+                'yanchor': 'bottom',  # Anchor to the bottom
+                'y': -0.3,  # Move the legend below the plot
+                'xanchor': 'center',  # Center the legend
+                'x': 0.5,  # Align to center horizontally
+                'font': {'size': 12}
+            },
+            font=dict(size=14),
+            margin=dict(t=100, b=150, l=100, r=100),  # Adjust bottom margin for legend space
+            paper_bgcolor='white',
+            plot_bgcolor='rgba(248,249,250,0.5)',
+            yaxis=dict(
+                range=[min_y, max_y],  # Dynamically set y-axis range
+                dtick=10,
+                gridcolor='lightgray'
+            ),
+            xaxis=dict(
+                gridcolor='lightgray',
+                type='date',
+                dtick='M1',  # Show monthly ticks
+                tickformat='%b %Y',  # Format as "Jan 2024"
+                range=[min_date, max_date]  # Dynamically set x-axis range
             )
-            monthly_avg['month_year_str'] = monthly_avg['month_year'].astype(str)
+        )
 
-            score_dict = dict(zip(monthly_avg['month_year_str'], monthly_avg['trust_score']))
-            y_vals = [score_dict.get(m, None) for m in data['months']]
+        # Add light grid lines
+        fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
+        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
 
-            line_name = f"{inst.upper()} ({display_label})"
-            color = colors.get(display_label, "#000000")
-
-            fig.add_trace(go.Scatter(
-                x=data['months'],
-                y=y_vals,
-                mode="lines+markers",
-                name=line_name,
-                line=dict(color=color),
-                marker=dict(size=6),
-                hovertemplate=(
-                        f"<b>{line_name}</b><br>" +
-                        "Month: %{x}<br>" +
-                        "Trust Score: %{y:.2f}<extra></extra>"
-                )
-            ))
-
-    fig.update_layout(
-        title=f"Trust in Institutions by {demo_choice}",
-        xaxis_title="Month",
-        yaxis_title="Trust Score",
-        yaxis=dict(range=[0, 5]),
-        legend=dict(x=1.0, y=1.0, xanchor='left', yanchor='top'),
-        margin=dict(l=60, r=60, t=80, b=80),
-        height=450,
-    )
-
-    return fig
-def solidarity_page():
-    """Solidarity in Israeli Society Page"""
-    st.header("Social Solidarity Indicators")
-
-    # Survey selection
-    survey_options = {
-        'Solidarity': 'solidarity_data/solidarity.xlsx',
-        'Social State': 'solidarity_data/matzv_chvrati.xlsx',
-        'Crisis': 'solidarity_data/mashber.xlsx'
-    }
-
-    selected_survey = st.selectbox(
-        'Select Survey:',
-        list(survey_options.keys())
-    )
-
-    # Visualization type
-    viz_type = st.radio(
-        "Select Visualization Type:",
-        ["Bar Chart", "Time Series"]
-    )
-
-    # Load and process survey data
-    try:
-        df = pd.read_excel(survey_options[selected_survey])
-        df['date'] = pd.to_datetime(df['date'])
-    except FileNotFoundError:
-        st.error(f"Survey data not found: {survey_options[selected_survey]}")
-        return
-
-    # Question selection
-    questions_map = {
-        'Gender': 'Gender',
-        'Combat Participation': 'Are you or immediate family members participating in combat?',
-        'Border Residence': 'Do you or immediate family live in border regions?'
-    }
-
-    selected_question = st.selectbox(
-        'Select Question:',
-        list(questions_map.keys())
-    )
-
-    # Create visualization
-    if viz_type == "Bar Chart":
-        create_solidarity_bar_chart(df, questions_map[selected_question])
+        # Render the plot
+        st.plotly_chart(fig, use_container_width=True, key="line_plot")
     else:
-        create_solidarity_time_series(df, questions_map[selected_question])
+        st.error("Question configuration not found")
 
 
-def main():
-    """Main application entry point"""
-    st.title("Israeli Public Opinion Dashboard")
-    st.sidebar.title("Navigation")
 
-    # Page selection
-    page = st.sidebar.selectbox(
-        "Select View",
-        [
-            "Rocket Strikes and Safety",
-            "Trust in Institutions",
-            "Social Solidarity"
-        ]
+def update_layout(fig, selected_question):
+    """
+    Optional helper function to update the layout of a Plotly figure.
+    This function standardizes the layout settings across different chart types.
+    """
+    fig.update_layout(
+        title={
+            'text': f'Survey Results by {selected_question}',
+            'y': 0.95,
+            'x': 0.5,
+            'xanchor': 'center',
+            'yanchor': 'top',
+            'font': {'size': 24}
+        },
+        barmode='group',
+        height=600,
+        showlegend=True,
+        legend={
+            'orientation': 'h',
+            'yanchor': 'bottom',
+            'y': -0.2,
+            'xanchor': 'center',
+            'x': 0.5
+        },
+        font=dict(size=14),
+        margin=dict(t=100, b=100, l=300, r=50),
+        paper_bgcolor='white',
+        plot_bgcolor='rgba(248,249,250,0.5)'
     )
 
-    # Route to appropriate page
-    if page == "Rocket Strikes and Safety":
-        rocket_strikes_page()
-    elif page == "Trust in Institutions":
-        trust_in_institutions_page()
-    elif page == "Social Solidarity":
-        solidarity_page()
+    # Customize X-axis
+    fig.update_xaxes(
+        title_text='Percentage (%)',
+        range=[0, 100],
+        gridcolor='rgba(0,0,0,0.1)',
+        showgrid=True,
+        tickformat='.1f',
+        zeroline=False
+    )
+
+    # Customize Y-axis
+    fig.update_yaxes(
+        title_text='',
+        gridcolor='rgba(0,0,0,0.1)',
+        showgrid=False,
+        automargin=True,
+        tickfont=dict(size=14)
+    )
+
+    # Render the updated figure in Streamlit
+    st.plotly_chart(fig, use_container_width=True, key="layout")
 
 
-if __name__ == "__main__":
-    main()
+def dashboard_overview():
+    st.title("War of Iron Swords: Public Opinion Analytics Dashboard")
+
+    # Overview Section
+    st.header("Overview")
+    st.write("""
+    This dashboard visualizes monthly public opinion surveys related to the War of Iron Swords 
+    to provide insights into the ongoing public sentiment along the conflict period.
+    """)
+
+    # Data Sources Section
+    st.header("Data Sources")
+
+    # Public Opinion Research
+    st.subheader("Public Opinion Research")
+    st.write("""
+    - **Monthly surveys** conducted among the Israeli population by the **INSS** 
+      ([Institute for National Security Studies](#)).
+    - **Sample size**: 580 respondents per survey.
+    - **Demographics**: Jewish Israeli adults (18+).
+    - **Sampling methodology**: Representative of the national adult population.
+    - **Statistical validity**: ±3.5% margin of error at **95% confidence level**.
+    """)
+
+    # Alarms Data
+    st.subheader("Alarms Data")
+    st.write("""
+    - **Real-time recordings** of alerts regarding **rocket launches** and **hostile aircraft intrusions**.
+    - Data collected by scraping from **Pikud HaOref** ([Home Front Command](#)).
+    """)
+
+    # Purpose Section
+    st.header("Purpose")
+    st.write("""
+    This dashboard serves as a tool for:
+    - **Tracking** evolving public sentiment throughout the war.
+    - **Analyzing** relations between security events and public opinion.
+    - **Providing** access to war-related insights.
+    """)
+
+    # Focus Areas
+    st.header("Focus Areas")
+
+    # 1. Public Trust
+    st.subheader("1. Public Trust")
+    st.write("Measuring confidence levels in public institutions throughout the war period.")
+
+    # 2. Personal Security
+    st.subheader("2. Personal Security")
+    st.write("""
+    Analyzing citizens' sense of personal security with regional breakdowns, 
+    providing insights into how different areas experience and perceive threats.
+    """)
+
+    # 3. National Perspective
+    st.subheader("3. National Perspective")
+    st.write("""
+    Evaluating collective attitudes toward:
+    - **National unity and solidarity**.
+    - **Current social conditions**.
+    - **Recovery prospects and future growth potential post-crisis**.
+    """)
+
+def personal_security_text():
+    """Displays an explanation of the personal security section in the dashboard."""
+    st.subheader("Purpose")
+    st.write(
+        "Analyzing citizens' sense of personal security with regional breakdowns, "
+        "providing insights into how different areas experience and perceive threats."
+    )
+
+    st.subheader("How To Use")
+    st.write(
+        "Filter period using the slider.\n\n"
+        "The district’s colors represent the average percentage of people in the district who feel secure – "
+        "the darker the color the more sense of security in this district. "
+        "Hover over a district to see the average survey responses for this district in the selected period.\n\n"
+        "It is optional to show alarms location, by checking the checkbox. "
+        "The dots represent the sum of alarms per locality, "
+        "the darker the color the higher number of alarms at this location. "
+        "Hover over a dot to see the locality and the sum of alarms at this locality in the selected period."
+    )
+
+
+
+##############################
+# --- STREAMLIT APP LAYOUT ---
+##############################
+
+# st.sidebar.title("Visualizations")
+
+visualization = st.sidebar.radio(
+    "Choose Visualization/page",
+    [
+        "Dashboard Overview",
+        "Rocket Strikes and Sentiments",
+        "Trust in Institutions Over Time",
+        "Solidarity in Israeli Society"
+    ],
+    label_visibility="visible"
+)
+# institutions_data = load_data()
+# months = institutions_data["months"]
+
+if visualization == "Rocket Strikes and Sentiments":
+    st.header("Rocket Strikes and Northern Residents' Sentiments")
+    # Call the function in your Streamlit app to display the text
+    personal_security_text()
+    rocket_strikes_map()
+
+elif visualization == "Dashboard Overview":
+    dashboard_overview()
+
+
+
+if visualization == "Trust in Institutions Over Time":
+    st.header("Trust in institutions and public figures during the War of Iron Swords")
+    # Usage example:
+    create_trust_dashboard(
+        bibi_data_path="data_storage/bibi.xlsx",
+        tzal_data_path="data_storage/tzal.xlsx",
+        mishtara_data_path="data_storage/mishtra.xlsx",
+        memshala_data_path="data_storage/memshla.xlsx"
+    )
+
+
+elif visualization == "Solidarity in Israeli Society":
+    st.header("Solidarity in Israeli Society")
+    create_solidarity_dashboard()
