@@ -881,7 +881,7 @@ def dashboard_overview():
     st.write("""
     - **Monthly surveys** conducted among the Israeli population by the **INSS** 
       ([Institute for National Security Studies](#)).
-    - **Sample size**: 580 respondents per survey.
+    - **Sample size**: ~580 respondents per survey.
     - **Demographics**: Jewish Israeli adults (18+).
     - **Sampling methodology**: Representative of the national adult population.
     - **Statistical validity**: ±3.5% margin of error at **95% confidence level**.
@@ -900,7 +900,7 @@ def dashboard_overview():
     This dashboard serves as a tool for:
     - **Tracking** evolving public sentiment throughout the war.
     - **Analyzing** relations between security events and public opinion.
-    - **Providing** access to war-related insights.
+    - **Providing** **access** to war-related insights.
     """)
 
     # Focus Areas
@@ -996,7 +996,7 @@ st.set_page_config(
 )
 
 visualization = st.sidebar.radio(
-    "Choose Visualization/page",
+    "Menu",
     [
         "Dashboard Overview",
         "Sense of Personal Security",
