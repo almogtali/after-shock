@@ -1,10 +1,11 @@
-
 from streamlit_plotly_events import plotly_events
 import geopandas as gpd
 import json
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+
+
 
 
 def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, memshala_data_path):
@@ -131,7 +132,7 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
 
         fig.update_layout(
             title="Trust Scores by Institution",
-            yaxis=dict(title="Trust Score (1-5)", range=[1, 5]),
+            yaxis=dict(title="Trust Score (1-4)", range=[1, 4]),
             xaxis=dict(title="Institution"),
             showlegend=False
         )
@@ -179,7 +180,7 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
             }
         }
 
-        demo_choice = st.selectbox("Choose a demographic dimension:", list(demo_mapping.keys()))
+        demo_choice = st.radio("Choose a demographic dimension:", list(demo_mapping.keys()))
 
         fig = go.Figure()
 
@@ -224,7 +225,7 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
             title=f"Trust Scores for {institution_name} Over Time by {demo_choice}",
             xaxis_title="Month",
             yaxis_title="Trust Score",
-            yaxis_range=[1, 5],
+            yaxis_range=[1, 4],
             hovermode="x unified",
             legend=dict(
                 orientation="h",  # Horizontal legend
@@ -238,6 +239,8 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
         )
 
         st.plotly_chart(fig, use_container_width=True)
+
+        # st.plotly_chart(fig, use_container_width=True)
 
     # ---- MAIN DASHBOARD LAYOUT ----
     # st.title("Israeli Sentiments Dashboard")
@@ -271,9 +274,10 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
         selected_inst_key = next((key for key, val in institutions.items() if val == selected_inst), None)
         create_demographic_time_series(selected_inst_key)
 
-
-
-
+# Generate a list of discrete months for the slider (Make it globally available)
+start_date = pd.Timestamp(2023, 10, 1).date()
+end_date = pd.Timestamp(2024, 11, 30).date()
+months = pd.date_range(start=start_date, end=end_date, freq='MS').to_period('M')
 def rocket_strikes_map():
     # New File Locations
     data_dir = "C:/Users/liamo/PycharmProjects/visu_project/hellel_data"
@@ -310,35 +314,35 @@ def rocket_strikes_map():
     # Load data
     gdf, data, alarms = load_data(surveyCSV, alarmsCSV, countiesSHP)
 
-    # Generate a list of discrete months for the slider
-    start_date = pd.Timestamp(2023, 10, 1).date()
-    end_date = pd.Timestamp(2024, 11, 30).date()
-    months = pd.date_range(start=start_date, end=end_date, freq='MS').to_period('M')
+    # # Generate a list of discrete months for the slider
+    # start_date = pd.Timestamp(2023, 10, 1).date()
+    # end_date = pd.Timestamp(2024, 11, 30).date()
+    # months = pd.date_range(start=start_date, end=end_date, freq='MS').to_period('M')
 
     # Sidebar: Time Period Selection using discrete months
-    st.sidebar.write("Select Time Period")
-    selected_range = st.sidebar.select_slider(
-        key="slider1",
-        label="Select Period",
-        options=list(months),
-        value=(months[0], months[-1])  # Default to full range
-    )
-
-    # Checkbox for showing alarms
-    show_alarms = st.sidebar.checkbox(label="Show Alarms", value=False)
-
+    # st.write("Select Time Period")
+    # selected_range = st.select_slider(
+    #     key="slider1",
+    #     label="Select Period",
+    #     options=list(months),
+    #     value=(months[0], months[-1])  # Default to full range
+    # )
+    #
+    # # Checkbox for showing alarms
+    # # show_alarms = st.sidebar.checkbox(label="Show Alarms", value=True)
+    # show_alarms = st.checkbox(label="Show Alarms", value=True)
     # Filter data based on the selected range
     filtered_data = data[
         (data['Year-Month'] >= selected_range[0]) &
         (data['Year-Month'] <= selected_range[1])
-    ]
+        ]
 
     if not filtered_data.empty:  # Ensure there is data to avoid errors
         # Filter alarms data based on selected period
         filtered_alarms = alarms[
             (alarms["Year-Month"] >= selected_range[0]) &
             (alarms["Year-Month"] <= selected_range[1] + pd.offsets.MonthEnd())
-        ]
+            ]
 
         # Group alarms data and calculate sum for period
         grouped_alarms = filtered_alarms.groupby(['data', 'outLat', 'outLong'], as_index=False)['count'].sum().round(2)
@@ -406,12 +410,14 @@ def rocket_strikes_map():
                     [0.5, '#81001C'],
                     [1, '#000000']
                 ],
-                cmin=max(grouped_alarms["count"].mean() - grouped_alarms["count"].std()*2, 0),  # Minimum value for color range
-                cmax=grouped_alarms["count"].mean() + grouped_alarms["count"].std()*2,  # Maximum value for color range
+                cmin=max(grouped_alarms["count"].mean() - grouped_alarms["count"].std() * 2, 0),
+                # Minimum value for color range
+                cmax=grouped_alarms["count"].mean() + grouped_alarms["count"].std() * 2,
+                # Maximum value for color range
                 showscale=True,  # Show the color scale legend
                 colorbar=dict(
                     title="Alarms Amount",
-                    x=1.35,
+                    x=1.2,
                 ),
             ),
             text=grouped_alarms.apply(lambda row: f"Data: {row['data']}<br>Count: {row['count']}", axis=1),
@@ -430,12 +436,12 @@ def rocket_strikes_map():
             mapbox=dict(
                 style="carto-positron",
                 center={"lat": 31.45, "lon": 35},
-                zoom=6.5,
+                zoom=6.7,
             ),
             width=900,  # Adjusted width for better visibility
             height=750,  # Adjusted height for better visibility
-            title="Rocket Strikes and Personal Safety Sentiments",
-            margin={"r":0,"t":50,"l":0,"b":0}
+            # title="Sense of Personal Security",
+            margin={"r": 0, "t": 50, "l": 0, "b": 0}
         )
 
         # Display the map
@@ -443,6 +449,7 @@ def rocket_strikes_map():
 
     else:
         st.warning("No data available for the selected time range. Please select a wider period.")
+
 
 def create_solidarity_dashboard():
     """
@@ -473,10 +480,12 @@ def create_solidarity_dashboard():
             'a5': 'Very concerned'
         },
         'עד כמה אתה אופטימי ביחס ליכולתה של החברה הישראלית להתאושש מהמשבר ולצמוח': {
-            'a1': 'Very pessimistic',
-            'a2': 'Somewhat pessimistic',
+            'a4': 'Very optimistic',
             'a3': 'Somewhat optimistic',
-            'a4': 'Very optimistic'
+            'a2': 'Somewhat pessimistic',
+            'a1': 'Very pessimistic'
+
+
         },
         'האם חל שינוי בתחושת הסולידריות בחברה הישראלית בעת הזו': {
             'a1': 'Solidarity has strengthened significantly',
@@ -491,7 +500,6 @@ def create_solidarity_dashboard():
     predefined_questions = list(question_mapping.keys())
 
     # Title of the Dashboard
-    st.title("Solidarity Dashboard")
 
     # File selection dropdown
     selected_file = st.selectbox(
@@ -500,7 +508,7 @@ def create_solidarity_dashboard():
     )
 
     # Create two columns for the controls
-    col1, col2 = st.columns([0.8,2.2])
+    col1, col2 = st.columns([0.8, 2.2])
 
     # Place visualization type selector in the first column
     with col1:
@@ -546,6 +554,7 @@ def create_solidarity_dashboard():
     else:
         create_line_plot(question_data, full_question, selected_question, response_mappings)
 
+
 # Add this mapping at the top of your script
 QUESTION_SHORT_FORMS = {
     'Are you or a first-degree family member involved in combat?': 'Combat involvement (family)',
@@ -554,6 +563,7 @@ QUESTION_SHORT_FORMS = {
     'How optimistic are you about Israeli society\'s ability to recover from the crisis and grow?': 'Recovery optimism',
     'Has there been a change in the sense of solidarity in Israeli society at this time?': 'Solidarity change'
 }
+
 
 def create_bar_chart(question_data, full_question, selected_question, response_mappings):
     """
@@ -581,11 +591,11 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
     else:
         categories = [f'Response {i}' for i in range(1, len(numeric_cols) + 1)]
 
-    # Reverse the order of categories and numeric columns for better visualization
-    categories = categories[::-1]
-    numeric_cols = numeric_cols[::-1]
+    if "solidarity" not in selected_question.lower():
+        categories = list(reversed(categories))  # Reverse categories first
+        numeric_cols = list(reversed(numeric_cols))  # Reverse numeric columns
 
-    # Add horizontal bars for each sub_subject
+        # Add horizontal bars for each sub_subject
     for idx, row in chart_data.iterrows():
         values = [row[col] * 100 for col in numeric_cols]  # Convert to percentages
         text_values = [f"{v:.1f}%" for v in values]  # Format text with percentages
@@ -643,6 +653,13 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
             showgrid=True,
             dtick=10  # Add gridlines every 10%
         )
+    )
+    # Ensure correct text alignment for Solidarity question
+    fig.update_yaxes(
+        categoryorder="array",
+        categoryarray=categories,  # Use categories exactly as reversed
+        tickangle=0,
+        automargin=True
     )
 
     # Ensure full width in Streamlit
@@ -739,7 +756,7 @@ def create_line_plot(question_data, full_question, selected_question, response_m
         y_values = []
         for trace in fig.data:
             y_values.extend(trace.y)
-        min_y = max(min(y_values) - 5, 0)  # Don't go below 0
+        # min_y = max(min(y_values) - 5, 0)  # Don't go below 0
         max_y = min(max(y_values) + 5, 100)  # Don't exceed 100
 
         # Get data range for x-axis
@@ -776,7 +793,7 @@ def create_line_plot(question_data, full_question, selected_question, response_m
             paper_bgcolor='white',
             plot_bgcolor='rgba(248,249,250,0.5)',
             yaxis=dict(
-                range=[min_y, max_y],  # Dynamically set y-axis range
+                range=[0, max_y],  # Dynamically set y-axis range
                 dtick=10,
                 gridcolor='lightgray'
             ),
@@ -797,7 +814,6 @@ def create_line_plot(question_data, full_question, selected_question, response_m
         st.plotly_chart(fig, use_container_width=True, key="line_plot")
     else:
         st.error("Question configuration not found")
-
 
 
 def update_layout(fig, selected_question):
@@ -871,7 +887,7 @@ def dashboard_overview():
     st.write("""
     - **Monthly surveys** conducted among the Israeli population by the **INSS** 
       ([Institute for National Security Studies](#)).
-    - **Sample size**: 580 respondents per survey.
+    - **Sample size**: ~580 respondents per survey.
     - **Demographics**: Jewish Israeli adults (18+).
     - **Sampling methodology**: Representative of the national adult population.
     - **Statistical validity**: ±3.5% margin of error at **95% confidence level**.
@@ -890,31 +906,32 @@ def dashboard_overview():
     This dashboard serves as a tool for:
     - **Tracking** evolving public sentiment throughout the war.
     - **Analyzing** relations between security events and public opinion.
-    - **Providing** access to war-related insights.
+    - **Providing** **access** to war-related insights.
     """)
 
     # Focus Areas
     st.header("Focus Areas")
 
     # 1. Public Trust
-    st.subheader("1. Public Trust")
+    st.subheader("1. Public Trust In Institutions And Public Figures")
     st.write("Measuring confidence levels in public institutions throughout the war period.")
 
     # 2. Personal Security
-    st.subheader("2. Personal Security")
+    st.subheader("2. Sense of Personal Security")
     st.write("""
     Analyzing citizens' sense of personal security with regional breakdowns, 
     providing insights into how different areas experience and perceive threats.
     """)
 
     # 3. National Perspective
-    st.subheader("3. National Perspective")
+    st.subheader("3. Israel’s Social Outlook")
     st.write("""
     Evaluating collective attitudes toward:
     - **National unity and solidarity**.
     - **Current social conditions**.
     - **Recovery prospects and future growth potential post-crisis**.
     """)
+
 
 def personal_security_text():
     """Displays an explanation of the personal security section in the dashboard."""
@@ -937,48 +954,145 @@ def personal_security_text():
     )
 
 
+def public_trust_text():
+    """
+    Displays text describing the purpose and usage instructions for the Public Trust visualization.
+    """
+    st.markdown("""
+
+
+    ### Purpose 
+    Analyzing confidence levels in public institutions throughout the war period.
+
+    ### How To Use
+    - **Main Plot**: View the average trust levels during the war for each institution or public figure.
+    - **Drill Down**: Click on a specific circle to see the trust levels throughout the war.
+    - **Demographic Breakdown**: Choose a demographic dimension to see changes in trust over time within each subgroup.
+    - **Scoring Range**: Trust scores range from 1 (lowest) to 4 (highest).
+    - **Over Time view**: Click on a line in the plot or a category in the legend to hide it. Click again on the legend to bring it back. 
+    """)
+
+
+def text_for_solidarity():
+    """
+    Displays text describing the purpose and usage instructions
+    for the Solidarity-related visualization.
+    """
+    st.markdown("""
+    ### Purpose
+    Evaluating collective attitudes toward:
+    - National sense of solidarity  
+    - Social situation the day after the war  
+    - Recovery prospects and future potential growth post-crisis  
+
+    ### How To Use
+    1. **Choose a subject** you want to display.  
+    2. **Choose a visualization type**: aggregated results or results over time.  
+    3. **Choose a segmentation** to display the plots by.  
+    4. Each subgroup is represented in a different color.  
+
+    - **Aggregated Results**: Shows a bar plot with the average percentage for each answer within a given subgroup.  
+    - **Results Over Time**: Displays how the highest score for each subgroup changes throughout the war.
+    """)
+
 
 ##############################
 # --- STREAMLIT APP LAYOUT ---
 ##############################
 
 # st.sidebar.title("Visualizations")
+st.set_page_config(
+    page_title="My Dashboard",
+    layout="wide"  # This makes the app use the full browser width
+)
 
 visualization = st.sidebar.radio(
-    "Choose Visualization/page",
+    "Menu",
     [
         "Dashboard Overview",
-        "Rocket Strikes and Sentiments",
-        "Trust in Institutions Over Time",
-        "Solidarity in Israeli Society"
+        "Public Trust In Institutions And Public Figures",
+        "Sense of Personal Security",
+        "Israel’s Social Outlook"
     ],
     label_visibility="visible"
 )
 # institutions_data = load_data()
 # months = institutions_data["months"]
 
-if visualization == "Rocket Strikes and Sentiments":
-    st.header("Rocket Strikes and Northern Residents' Sentiments")
-    # Call the function in your Streamlit app to display the text
-    personal_security_text()
-    rocket_strikes_map()
+# if visualization == "Sense of Personal Security":
+#     st.header("Sense of Personal Security")
+#
+#     col3, col4 = st.columns([1, 1.5])
+#
+#     with col3:
+#         personal_security_text()
+#
+#     with col4:
+#         rocket_strikes_map()
+if visualization == "Sense of Personal Security":
+    st.header("Sense of Personal Security")
+
+    col1, col2 = st.columns([1, 2])  # Left side for text & controls, Right side for map
+
+    with col1:
+        personal_security_text()
+
+        # Move the time period selection here
+        # st.write("Select Time Period")
+        selected_range = st.select_slider(
+            key="slider1",
+            label="Select Period",
+            options=list(months),  # ✅ Now `months` is defined
+            value=(months[0], months[-1])  # Default to full range
+        )
+
+        # Move the checkbox here
+        show_alarms = st.checkbox(label="Show Alarms", value=True)
+
+    with col2:
+        rocket_strikes_map()  # Map will now be positioned correctly
+
 
 elif visualization == "Dashboard Overview":
     dashboard_overview()
 
+if visualization == "Public Trust In Institutions And Public Figures":
+    st.header("Public Trust In Institutions And Public Figures")
+
+    col7, col8 = st.columns([1, 2])
+
+    with col7:
+        public_trust_text()
+
+    with col8:
+        # Usage example:
+        create_trust_dashboard(
+            bibi_data_path="data_storage/bibi.xlsx",
+            tzal_data_path="data_storage/tzal.xlsx",
+            mishtara_data_path="data_storage/mishtra.xlsx",
+            memshala_data_path="data_storage/memshla.xlsx"
+        )
+
+    # # Usage example:
+    # create_trust_dashboard(
+    #     bibi_data_path="data_storage/bibi.xlsx",
+    #     tzal_data_path="data_storage/tzal.xlsx",
+    #     mishtara_data_path="data_storage/mishtra.xlsx",
+    #     memshala_data_path="data_storage/memshla.xlsx"
+    # )
 
 
-if visualization == "Trust in Institutions Over Time":
-    st.header("Trust in institutions and public figures during the War of Iron Swords")
-    # Usage example:
-    create_trust_dashboard(
-        bibi_data_path="data_storage/bibi.xlsx",
-        tzal_data_path="data_storage/tzal.xlsx",
-        mishtara_data_path="data_storage/mishtra.xlsx",
-        memshala_data_path="data_storage/memshla.xlsx"
-    )
+elif visualization == "Israel’s Social Outlook":
+    st.title("Israel’s Social Outlook")
 
+    col9, col10 = st.columns([1, 2])
 
-elif visualization == "Solidarity in Israeli Society":
-    st.header("Solidarity in Israeli Society")
-    create_solidarity_dashboard()
+    with col9:
+        text_for_solidarity()
+
+    with col10:
+        # Usage example:
+        create_solidarity_dashboard()
+
+    # text_for_solidarity()
+    # create_solidarity_dashboard()
