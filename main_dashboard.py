@@ -181,66 +181,68 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
                 "18-24": {"hebrew": "18-24", "color": "rgb(255, 192, 203)"}
             }
         }
+        col11, col22 = st.columns([0.3, 0.7])
+        with col11:
+            demo_choice = st.radio("Choose a demographic dimension:", list(demo_mapping.keys()))
 
-        demo_choice = st.radio("Choose a demographic dimension:", list(demo_mapping.keys()))
+        with col22:
+            fig = go.Figure()
 
-        fig = go.Figure()
+            if demo_choice in ["Religiousness", "Age", "District"]:
+                selected_map = demo_mapping[demo_choice]
+                for eng_label, value in selected_map.items():
+                    sub_data = trust_scores[trust_scores["sub_subject"] == value["hebrew"]].copy()
 
-        if demo_choice in ["Religiousness", "Age", "District"]:
-            selected_map = demo_mapping[demo_choice]
-            for eng_label, value in selected_map.items():
-                sub_data = trust_scores[trust_scores["sub_subject"] == value["hebrew"]].copy()
+                    if not sub_data.empty:
+                        monthly_avg = sub_data.groupby("month_year")["trust_score"].mean().reset_index()
+                        monthly_avg["month_year_str"] = monthly_avg["month_year"].astype(str)
 
-                if not sub_data.empty:
-                    monthly_avg = sub_data.groupby("month_year")["trust_score"].mean().reset_index()
-                    monthly_avg["month_year_str"] = monthly_avg["month_year"].astype(str)
+                        fig.add_trace(go.Scatter(
+                            x=monthly_avg["month_year_str"],
+                            y=monthly_avg["trust_score"],
+                            name=eng_label,
+                            mode="lines+markers",
+                            connectgaps=True,
+                            line=dict(width=2, color=value["color"]),
+                            marker=dict(size=8, color=value["color"])
+                        ))
+            else:
+                selected_map = {k: v for k, v in demo_mapping[demo_choice].items()}
+                for eng_label, hebrew_label in selected_map.items():
+                    sub_data = trust_scores[trust_scores["sub_subject"] == hebrew_label].copy()
 
-                    fig.add_trace(go.Scatter(
-                        x=monthly_avg["month_year_str"],
-                        y=monthly_avg["trust_score"],
-                        name=eng_label,
-                        mode="lines+markers",
-                        connectgaps=True,
-                        line=dict(width=2, color=value["color"]),
-                        marker=dict(size=8, color=value["color"])
-                    ))
-        else:
-            selected_map = {k: v for k, v in demo_mapping[demo_choice].items()}
-            for eng_label, hebrew_label in selected_map.items():
-                sub_data = trust_scores[trust_scores["sub_subject"] == hebrew_label].copy()
+                    if not sub_data.empty:
+                        monthly_avg = sub_data.groupby("month_year")["trust_score"].mean().reset_index()
+                        monthly_avg["month_year_str"] = monthly_avg["month_year"].astype(str)
 
-                if not sub_data.empty:
-                    monthly_avg = sub_data.groupby("month_year")["trust_score"].mean().reset_index()
-                    monthly_avg["month_year_str"] = monthly_avg["month_year"].astype(str)
+                        fig.add_trace(go.Scatter(
+                            x=monthly_avg["month_year_str"],
+                            y=monthly_avg["trust_score"],
+                            name=eng_label,
+                            mode="lines+markers",
+                            connectgaps=True,
+                            line=dict(width=2),
+                            marker=dict(size=8)
+                        ))
 
-                    fig.add_trace(go.Scatter(
-                        x=monthly_avg["month_year_str"],
-                        y=monthly_avg["trust_score"],
-                        name=eng_label,
-                        mode="lines+markers",
-                        connectgaps=True,
-                        line=dict(width=2),
-                        marker=dict(size=8)
-                    ))
+            fig.update_layout(
+                title=f"Trust Scores for {institution_name} Over Time by {demo_choice}",
+                xaxis_title="Month",
+                yaxis_title="Trust Score",
+                yaxis_range=[1, 4],
+                hovermode="x unified",
+                legend=dict(
+                    orientation="h",  # Horizontal legend
+                    yanchor="top",  # Anchoring to the top of the legend box
+                    y=-0.2,  # Moving the legend below the plot
+                    xanchor="center",
+                    x=0.5,
+                    bgcolor="rgba(255, 255, 255, 0.8)"
+                ),
+                margin=dict(b=100)  # Adding space at the bottom for the legend
+            )
 
-        fig.update_layout(
-            title=f"Trust Scores for {institution_name} Over Time by {demo_choice}",
-            xaxis_title="Month",
-            yaxis_title="Trust Score",
-            yaxis_range=[1, 4],
-            hovermode="x unified",
-            legend=dict(
-                orientation="h",  # Horizontal legend
-                yanchor="top",  # Anchoring to the top of the legend box
-                y=-0.2,  # Moving the legend below the plot
-                xanchor="center",
-                x=0.5,
-                bgcolor="rgba(255, 255, 255, 0.8)"
-            ),
-            margin=dict(b=100)  # Adding space at the bottom for the legend
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True)
 
         # st.plotly_chart(fig, use_container_width=True)
 
@@ -1065,6 +1067,8 @@ if visualization == "Public Trust In Institutions And Public Figures":
 
     with col7:
         public_trust_text()
+        # demo_choice = st.radio("Choose a demographic dimension:",
+        #                        ["District", "Religiousness", "Political stance", "Age"])  # Move radio buttons here
 
     with col8:
         # Usage example:
