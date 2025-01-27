@@ -443,88 +443,116 @@ def rocket_strikes_map():
 
     else:
         st.warning("No data available for the selected time range. Please select a wider period.")
-
+import streamlit as st
+import pandas as pd
+import plotly.graph_objs as go
+import streamlit as st
+import pandas as pd
+import plotly.graph_objs as go
 
 def create_solidarity_dashboard():
     """
     This function creates the Solidarity Dashboard with an English user interface.
     Users can select surveys, questions, and visualization types to view the data.
     """
-    # Mapping of English question labels to Hebrew question strings
+
+    # 1. Mapping of English question labels to Hebrew question strings
     question_mapping = {
-        'Are you or a first-degree family member involved in combat?': 'האם את.ה או בן משפחה בדרגה ראשונה שלך לוקח חלק בלחימה?',
-        'Are you or a first-degree family member residing near the Gaza envelope or northern border?': 'האם את.ה או בן משפחה בדרגה ראשונה שלך מתגורר בעוטף עזה או בגבול הצפון?',
-        'Gender': 'מגדר'
+        "Are you or a first-degree family member involved in combat?":
+            "האם את.ה או בן משפחה בדרגה ראשונה שלך לוקח חלק בלחימה?",
+        "Are you or a first-degree family member residing near the Gaza envelope or northern border?":
+            "האם את.ה או בן משפחה בדרגה ראשונה שלך מתגורר בעוטף עזה או בגבול הצפון?",
+        "Gender": "מגדר"
     }
 
-    # File selection with predefined questions for each file (English labels)
+    # 2. File selection with predefined questions (English labels)
     file_options = {
-        'Has there been a change in the sense of solidarity in Israeli society at this time?': 'solidarity_data/solidarity.xlsx',
-        'How concerned are you about Israel\'s social situation on the day after the war?': 'solidarity_data/matzv_chvrati.xlsx',
-        'How optimistic are you about Israeli society\'s ability to recover from the crisis and grow?': 'solidarity_data/mashber.xlsx'
+        "Has there been a change in the sense of solidarity in Israeli society at this time?":
+            "solidarity_data/solidarity.xlsx",
+        "How concerned are you about Israel's social situation on the day after the war?":
+            "solidarity_data/matzv_chvrati.xlsx",
+        "How optimistic are you about Israeli society's ability to recover from the crisis and grow?":
+            "solidarity_data/mashber.xlsx"
     }
 
-    # Define response mappings for each question (remains in Hebrew)
+    # 3. Response mappings (in Hebrew → displayed as English)
     response_mappings = {
-        'עד כמה את.ה מוטרד.ת או לא מוטרד.ת ממצבה החברתי של ישראל ביום שאחרי המלחמה דרג בסולם של 1-5, כאשר 5 = מוטרד מאד ו - 1 = לא מוטרד כלל': {
-            'a1': 'Not concerned at all',
-            'a2': 'Slightly concerned',
-            'a3': 'Moderately concerned',
-            'a4': 'Concerned',
-            'a5': 'Very concerned'
+        "עד כמה את.ה מוטרד.ת או לא מוטרד.ת ממצבה החברתי של ישראל ביום שאחרי המלחמה דרג בסולם של 1-5, כאשר 5 = מוטרד מאד ו - 1 = לא מוטרד כלל": {
+            "a1": "Not concerned at all",
+            "a2": "Slightly concerned",
+            "a3": "Moderately concerned",
+            "a4": "Concerned",
+            "a5": "Very concerned"
         },
-        'עד כמה אתה אופטימי ביחס ליכולתה של החברה הישראלית להתאושש מהמשבר ולצמוח': {
-            'a4': 'Very optimistic',
-            'a3': 'Somewhat optimistic',
-            'a2': 'Somewhat pessimistic',
-            'a1': 'Very pessimistic'
-
-
+        "עד כמה אתה אופטימי ביחס ליכולתה של החברה הישראלית להתאושש מהמשבר ולצמוח": {
+            "a4": "Very optimistic",
+            "a3": "Somewhat optimistic",
+            "a2": "Somewhat pessimistic",
+            "a1": "Very pessimistic"
         },
-        'האם חל שינוי בתחושת הסולידריות בחברה הישראלית בעת הזו': {
-            'a1': 'Solidarity has strengthened significantly',
-            'a2': 'Solidarity has somewhat strengthened',
-            'a3': 'No change in solidarity',
-            'a4': 'Solidarity has somewhat decreased',
-            'a5': 'Solidarity has significantly decreased'
+        "האם חל שינוי בתחושת הסולידריות בחברה הישראלית בעת הזו": {
+            "a1": "Solidarity has strengthened significantly",
+            "a2": "Solidarity has somewhat strengthened",
+            "a3": "No change in solidarity",
+            "a4": "Solidarity has somewhat decreased",
+            "a5": "Solidarity has significantly decreased"
         }
     }
 
-    # Predefined questions in English
+    # 4. The original 'predefined_questions' list (English labels)
     predefined_questions = list(question_mapping.keys())
 
-    # Title of the Dashboard
+    # --------------------------------------------------------------------------
+    # 5. Here is the NEW PART: concise statements to replace the question text
+    # --------------------------------------------------------------------------
+    concise_statements = {
+        "Are you or a first-degree family member involved in combat?":
+            "Involved in combat (self or first-degree family member)",
+        "Are you or a first-degree family member residing near the Gaza envelope or northern border?":
+            "Residing near Gaza/northern border (self or first-degree family member)",
+        "Gender": "Gender"
+    }
 
+    # We'll build a reverse lookup to recover the original question from its short statement
+    statement_to_question = {v: k for k, v in concise_statements.items()}
+
+    # --------------------------------------------------------------------------
+    # 6. Streamlit UI
+    # --------------------------------------------------------------------------
     # File selection dropdown
     selected_file = st.selectbox(
-        'Select Subject to Display:',
+        "Select Subject to Display:",
         list(file_options.keys())
     )
 
-    # Create two columns for the controls
+    # Two columns for layout
     col1, col2 = st.columns([0.8, 2.2])
 
-    # Place visualization type selector in the first column
     with col1:
         viz_type = st.radio(
             "Select Visualization Type:",
             ["Aggregated results", "Results over time"]
         )
 
-    # Place segmentation selector in the second column
+    # Instead of displaying the original question, we display the concise statement
     with col2:
-        selected_question = st.selectbox(
-            'Select segmentation to display:',
-            predefined_questions
+        selected_statement = st.selectbox(
+            "Select segmentation to display:",
+            [concise_statements[q] for q in predefined_questions]
         )
 
-    # Get the Hebrew question string based on the selected English label
+    # Convert the selected statement back to the original question key
+    selected_question = statement_to_question.get(selected_statement, selected_statement)
+
+    # --------------------------------------------------------------------------
+    # 7. Find the Hebrew question string
+    # --------------------------------------------------------------------------
     hebrew_question = question_mapping.get(selected_question)
 
-    # Data Loading with Error Handling
+    # 8. Load the data
     try:
         df = pd.read_excel(file_options[selected_file])
-        df['date'] = pd.to_datetime(df['date'])
+        df["date"] = pd.to_datetime(df["date"])
     except FileNotFoundError:
         st.error(f"The selected survey file '{selected_file}' was not found. Please check the file path.")
         return
@@ -532,139 +560,172 @@ def create_solidarity_dashboard():
         st.error(f"An error occurred while loading the data: {e}")
         return
 
-    # Data Filtering
+    # 9. Filter data for this Hebrew question
     if hebrew_question:
-        question_data = df[df['subject'] == hebrew_question].copy()
-        question_data = question_data[question_data['sub_subject'] != 'Total']
+        question_data = df[df["subject"] == hebrew_question].copy()
+        question_data = question_data[question_data["sub_subject"] != "Total"]
     else:
         st.error("Selected question mapping not found.")
         return
 
-    full_question = df['q_full'].iloc[0] if not df.empty else None
+    full_question = df["q_full"].iloc[0] if not df.empty else None
 
-    # Visualization Selection
+    # 10. Choose which visualization to draw
     if viz_type == "Aggregated results":
         create_bar_chart(question_data, full_question, selected_question, response_mappings)
     else:
         create_line_plot(question_data, full_question, selected_question, response_mappings)
 
 
-# Add this mapping at the top of your script
+# --------------------------------------------------------------------------
+# Short question forms for chart titles
+# --------------------------------------------------------------------------
 QUESTION_SHORT_FORMS = {
-    'Are you or a first-degree family member involved in combat?': 'Combat involvement (family)',
-    'Are you or a first-degree family member residing near the Gaza envelope or northern border?': 'Border residence (family)',
-    'How concerned are you about Israel\'s social situation on the day after the war?': 'Post-war concerns',
-    'How optimistic are you about Israeli society\'s ability to recover from the crisis and grow?': 'Recovery optimism',
-    'Has there been a change in the sense of solidarity in Israeli society at this time?': 'Solidarity change'
+    "Are you or a first-degree family member involved in combat?": "Combat involvement (family)",
+    "Are you or a first-degree family member residing near the Gaza envelope or northern border?": "Border residence (family)",
+    "How concerned are you about Israel's social situation on the day after the war?": "Post-war concerns",
+    "How optimistic are you about Israeli society's ability to recover from the crisis and grow?": "Recovery optimism",
+    "Has there been a change in the sense of solidarity in Israeli society at this time?": "Solidarity change"
 }
-
 
 def create_bar_chart(question_data, full_question, selected_question, response_mappings):
     """
-    Creates a horizontal bar chart based on the selected question data with x-axis range capped at 70%.
+    Creates a horizontal bar chart where:
+    - 'כן' is displayed as 'Involved in combat (self or first-degree family member)'
+    - 'לא' is displayed as 'Not involved in combat (self or first-degree family member)'
     """
-    # Identify numeric columns representing response options (e.g., a1, a2, ...)
-    numeric_cols = [col for col in question_data.columns if col.startswith('a')]
-    numeric_cols.sort()  # Ensure columns are sorted
 
-    # Group data by 'sub_subject' and calculate the mean for each response option
+    # ✅ Define correct color mapping
+    color_mapping = {
+        "Involved in combat (self or first-degree family member)": '#654321',  # Dark brown
+        "Not involved in combat (self or first-degree family member)": '#333333',  # Dark gray
+        "Female": "#8B0000",  # Dark red
+        "Male": "#00008B",  # Dark blue
+        "Living in North/Gaza Envelope": "#006400",  # Dark green
+        "Not Living in North/Gaza Envelope": "#4B0082",  # Dark purple
+        "Unknown": "#999999"  # Fallback color
+    }
+
+    # Identify numeric columns (a1, a2, etc.)
+    numeric_cols = [col for col in question_data.columns if col.startswith("a")]
+    numeric_cols.sort()
+
+    # Group data by 'sub_subject' and calculate the mean
     chart_data = (
-        question_data.groupby('sub_subject', as_index=False)[numeric_cols]
+        question_data.groupby("sub_subject", as_index=False)[numeric_cols]
         .mean()
     )
 
     fig = go.Figure()
 
-    # Define colors for different groups
-    option1_color = '#082f49'  # Dark blue
-    option2_color = '#f97316'  # Orange
-
-    # Map response codes to descriptive labels using response_mappings
+    # Convert the 'aX' codes to English labels if available
     if full_question in response_mappings:
-        categories = [response_mappings[full_question][col] for col in numeric_cols]
+        categories = [response_mappings[full_question].get(col, col) for col in numeric_cols]
     else:
-        categories = [f'Response {i}' for i in range(1, len(numeric_cols) + 1)]
+        categories = [f"Response {i}" for i in range(1, len(numeric_cols) + 1)]
 
+    # Reverse categories if not about solidarity (example logic)
     if "solidarity" not in selected_question.lower():
-        categories = list(reversed(categories))  # Reverse categories first
-        numeric_cols = list(reversed(numeric_cols))  # Reverse numeric columns
+        categories = list(reversed(categories))
+        numeric_cols = list(reversed(numeric_cols))
 
-        # Add horizontal bars for each sub_subject
-    for idx, row in chart_data.iterrows():
-        values = [row[col] * 100 for col in numeric_cols]  # Convert to percentages
-        text_values = [f"{v:.1f}%" for v in values]  # Format text with percentages
+    # ✅ Brute-force correct legend labels BEFORE assigning colors
+    for _, row in chart_data.iterrows():
+        sub_subject = row["sub_subject"]
+
+        if selected_question == "Are you or a first-degree family member involved in combat?":
+            if sub_subject.strip() == "כן":
+                legend_name = "Involved in combat (self or first-degree family member)"
+            elif sub_subject.strip() == "לא":
+                legend_name = "Not involved in combat (self or first-degree family member)"
+            else:
+                legend_name = "Unknown"
+        else:
+            if sub_subject.strip() == "זכר":
+                legend_name = "Male"
+            elif sub_subject.strip() == "נקבה":
+                legend_name = "Female"
+            elif sub_subject.strip() == "כן":
+                legend_name = "Living in North/Gaza Envelope"
+            elif sub_subject.strip() == "לא":
+                legend_name = "Not Living in North/Gaza Envelope"
+            else:
+                legend_name = "Unknown"  # Fallback for unmapped values
+
+        # ✅ Now, fetch the correct color AFTER assigning correct legend name
+        bar_color = color_mapping.get(legend_name, color_mapping["Unknown"])
+
+        values = [row[col] * 100 for col in numeric_cols]
+        text_values = [f"{v:.1f}%" for v in values]
 
         fig.add_trace(go.Bar(
-            name=row['sub_subject'],
+            name=legend_name,
             x=values,
             y=categories,
-            text=text_values,  # Add percentage labels
-            textposition='outside',  # Place labels outside bars
-            textfont=dict(size=14),  # Increase label font size
-            constraintext='none',  # Prevent text from being cut off
-            cliponaxis=False,  # Prevent clipping of labels
-            orientation='h',
-            marker_color=option1_color if idx == 0 else option2_color,
+            text=text_values,
+            textposition="outside",
+            textfont=dict(size=14),
+            orientation="h",
+            marker_color=bar_color,  # ✅ Color now correctly maps
             hovertemplate="<b>%{y}</b><br>" +
-                          row['sub_subject'] + ": %{x:.1f}%" +
+                          f"{legend_name}: " + "%{x:.1f}%" +
                           "<extra></extra>"
         ))
 
-    # Get shorter version of the question for the title
     short_question = QUESTION_SHORT_FORMS.get(selected_question, selected_question)
-    title_text = f"{short_question} aggregated"
+    title_text = f"{short_question} (aggregated)"
 
-    # Update layout with shorter title
     fig.update_layout(
         title={
-            'text': title_text,
-            'y': 0.95,
-            'x': 0.5,
-            'xanchor': 'center',
-            'yanchor': 'top',
-            'font': {'size': 24}
+            "text": title_text,
+            "y": 0.95,
+            "x": 0.5,
+            "xanchor": "center",
+            "yanchor": "top",
+            "font": {"size": 24}
         },
-        barmode='group',
+        barmode="group",
         height=700,
         width=1200,
         showlegend=True,
         legend={
-            'orientation': 'h',
-            'yanchor': 'bottom',
-            'y': -0.2,
-            'xanchor': 'center',
-            'x': 0.5
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": -0.2,
+            "xanchor": "center",
+            "x": 0.5
         },
         font=dict(size=16),
-        # Increase margins to accommodate labels
         margin=dict(t=80, b=200, l=100, r=200),
-        paper_bgcolor='white',
-        plot_bgcolor='rgba(248,249,250,0.5)',
-        yaxis={'autorange': 'reversed'},
-        # Modified x-axis range to cap at 70%
+        paper_bgcolor="white",
+        plot_bgcolor="rgba(248,249,250,0.5)",
+        yaxis={"autorange": "reversed"},
         xaxis=dict(
-            range=[-5, 62],  # Changed from 105 to 70
+            range=[-5, 62],
             showgrid=True,
-            dtick=10  # Add gridlines every 10%
+            dtick=10
         )
     )
-    # Ensure correct text alignment for Solidarity question
+
     fig.update_yaxes(
         categoryorder="array",
-        categoryarray=categories,  # Use categories exactly as reversed
+        categoryarray=categories,
         tickangle=0,
         automargin=True
     )
 
-    # Ensure full width in Streamlit
     st.plotly_chart(fig, use_container_width=True, key="bar_chart")
+
+
 
 
 def create_line_plot(question_data, full_question, selected_question, response_mappings):
     """
-    Creates a line plot showing specific aggregations for different questions.
+    Creates a line plot showing sums of specified columns (like a1+a2) over time.
+    Brute force for combat question to ensure correct legend labels.
     """
-    # Define aggregation rules based on the question
+
+    # Which columns to sum for each question in Hebrew
     aggregations = {
         'האם חל שינוי בתחושת הסולידריות בחברה הישראלית בעת הזו': {
             'name': 'Solidarity has strengthened',
@@ -680,87 +741,86 @@ def create_line_plot(question_data, full_question, selected_question, response_m
         }
     }
 
-    # Demographic pairs and their translations
-    demographic_pairs = {
-        'מגדר': {
-            'נקבה': 'Female',
-            'זכר': 'Male'
-        },
-        'גרים בצפון/עוטף': {
-            'כן': 'Living in North/Gaza Envelope',
-            'לא': 'Not Living in North/Gaza Envelope'
-        },
-        'משפחה של לוחמים': {
-            'כן': 'Family of Combatants',
-            'לא': 'Not Family of Combatants'
-        }
-    }
-
-    # Color mapping with distinctive colors
+    # Minimal color mapping
     color_mapping = {
-        'Female': '#8B0000',  # Dark red
-        'Male': '#00008B',  # Dark blue
-        'Living in North/Gaza Envelope': '#006400',  # Dark green
-        'Not Living in North/Gaza Envelope': '#4B0082',  # Dark purple
-        'Family of Combatants': '#654321',  # Dark brown
-        'Not Family of Combatants': '#333333'  # Dark gray
+        "Involved in combat (self or first-degree family member)": '#654321',
+        "Not involved in combat (self or first-degree family member)": '#333333',
+
+        'Female': '#8B0000',
+        'Male': '#00008B',
+
+        'Living in North/Gaza Envelope': '#006400',
+        'Not Living in North/Gaza Envelope': '#4B0082',
+
+        'Unknown': '#999999'
     }
 
     fig = go.Figure()
 
-    # Get aggregation rules for the current question
     agg_config = aggregations.get(full_question)
     if agg_config:
+        # Sum the relevant columns
         aggregated_data = question_data.copy()
-
-        # Calculate the sum of specified columns
         aggregated_data['agg_value'] = aggregated_data[agg_config['columns']].sum(axis=1)
 
-        # Plot line for each demographic group
+        # For each sub_subject, draw a line over time
         for sub_subject in aggregated_data['sub_subject'].unique():
             sub_data = aggregated_data[aggregated_data['sub_subject'] == sub_subject].sort_values('date')
 
-            # Find the correct English translation for the demographic group
-            english_name = None
-            for demo_group in demographic_pairs.values():
-                if sub_subject in demo_group:
-                    english_name = demo_group[sub_subject]
-                    break
+            # Brute force only for the combat question
+            if selected_question == "Are you or a first-degree family member involved in combat?":
+                if sub_subject == 'כן':
+                    legend_name = "Involved in combat (self or first-degree family member)"
+                else:
+                    legend_name = "Not involved in combat (self or first-degree family member)"
+            else:
+                # Fallback for other questions
+                if sub_subject in ('זכר', 'Male'):
+                    legend_name = "Male"
+                elif sub_subject in ('נקבה', 'Female'):
+                    legend_name = "Female"
+                elif sub_subject == 'כן':
+                    legend_name = "Living in North/Gaza Envelope"
+                elif sub_subject == 'לא':
+                    legend_name = "Not Living in North/Gaza Envelope"
+                else:
+                    legend_name = "Unknown"
 
-            if english_name:
-                fig.add_trace(go.Scatter(
-                    x=sub_data['date'],
-                    y=sub_data['agg_value'] * 100,  # Convert to percentages
-                    name=english_name,
-                    mode='lines+markers',
-                    line=dict(color=color_mapping[english_name], width=2),
-                    marker=dict(size=8),
-                    hovertemplate=(
-                            "Date: %{x|%Y-%m-%d}<br>" +
-                            f"{agg_config['name']}: %{{y:.1f}}%<br>" +
-                            "<extra></extra>"
-                    )
-                ))
+            color = color_mapping.get(legend_name, color_mapping['Unknown'])
 
-        # Get shorter version of the question for the title
+            fig.add_trace(go.Scatter(
+                x=sub_data['date'],
+                y=sub_data['agg_value'] * 100,
+                name=legend_name,
+                mode='lines+markers',
+                line=dict(color=color, width=2),
+                marker=dict(size=8),
+                hovertemplate=(
+                    "Date: %{x|%Y-%m-%d}<br>" +
+                    f"{agg_config['name']}: %{{y:.1f}}%<br>" +
+                    "<extra></extra>"
+                )
+            ))
+
+        # Title text
         short_question = response_mappings.get(selected_question, selected_question)
         title_text = f"{short_question} - Over Time"
 
-        # Get data range for y-axis
-        y_values = []
+        # Get Y range
+        all_y_values = []
         for trace in fig.data:
-            y_values.extend(trace.y)
-        # min_y = max(min(y_values) - 5, 0)  # Don't go below 0
-        max_y = min(max(y_values) + 5, 100)  # Don't exceed 100
+            all_y_values.extend(trace.y)
+        max_y = min(max(all_y_values) + 5, 100) if all_y_values else 100
 
-        # Get data range for x-axis
-        dates = []
+        # Get X (date) range
+        all_dates = []
         for trace in fig.data:
-            dates.extend(trace.x)
-        min_date = min(dates)
-        max_date = max(dates)
+            all_dates.extend(trace.x)
+        if all_dates:
+            min_date, max_date = min(all_dates), max(all_dates)
+        else:
+            min_date, max_date = None, None
 
-        # Update layout with optimized ranges and more date ticks
         fig.update_layout(
             title={
                 'text': title_text,
@@ -775,36 +835,34 @@ def create_line_plot(question_data, full_question, selected_question, response_m
             height=600,
             showlegend=True,
             legend={
-                'orientation': 'h',  # Set legend to horizontal
-                'yanchor': 'bottom',  # Anchor to the bottom
-                'y': -0.3,  # Move the legend below the plot
-                'xanchor': 'center',  # Center the legend
-                'x': 0.5,  # Align to center horizontally
+                'orientation': 'h',
+                'yanchor': 'bottom',
+                'y': -0.3,
+                'xanchor': 'center',
+                'x': 0.5,
                 'font': {'size': 12}
             },
             font=dict(size=14),
-            margin=dict(t=100, b=150, l=100, r=100),  # Adjust bottom margin for legend space
+            margin=dict(t=100, b=150, l=100, r=100),
             paper_bgcolor='white',
             plot_bgcolor='rgba(248,249,250,0.5)',
             yaxis=dict(
-                range=[0, max_y],  # Dynamically set y-axis range
+                range=[0, max_y],
                 dtick=10,
                 gridcolor='lightgray'
             ),
             xaxis=dict(
                 gridcolor='lightgray',
                 type='date',
-                dtick='M1',  # Show monthly ticks
-                tickformat='%b %Y',  # Format as "Jan 2024"
-                range=[min_date, max_date]  # Dynamically set x-axis range
+                dtick='M1',
+                tickformat='%b %Y',
+                range=[min_date, max_date] if min_date else None
             )
         )
 
-        # Add light grid lines
         fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
         fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
 
-        # Render the plot
         st.plotly_chart(fig, use_container_width=True, key="line_plot")
     else:
         st.error("Question configuration not found")
@@ -812,12 +870,11 @@ def create_line_plot(question_data, full_question, selected_question, response_m
 
 def update_layout(fig, selected_question):
     """
-    Optional helper function to update the layout of a Plotly figure.
-    This function standardizes the layout settings across different chart types.
+    (Optional) Helper to standardize a Plotly figure layout if desired.
     """
     fig.update_layout(
         title={
-            'text': f'Survey Results by {selected_question}',
+            'text': f'Survey Results: {selected_question}',
             'y': 0.95,
             'x': 0.5,
             'xanchor': 'center',
@@ -840,7 +897,6 @@ def update_layout(fig, selected_question):
         plot_bgcolor='rgba(248,249,250,0.5)'
     )
 
-    # Customize X-axis
     fig.update_xaxes(
         title_text='Percentage (%)',
         range=[0, 100],
@@ -850,7 +906,6 @@ def update_layout(fig, selected_question):
         zeroline=False
     )
 
-    # Customize Y-axis
     fig.update_yaxes(
         title_text='',
         gridcolor='rgba(0,0,0,0.1)',
@@ -859,8 +914,9 @@ def update_layout(fig, selected_question):
         tickfont=dict(size=14)
     )
 
-    # Render the updated figure in Streamlit
     st.plotly_chart(fig, use_container_width=True, key="layout")
+
+
 
 
 def dashboard_overview():
