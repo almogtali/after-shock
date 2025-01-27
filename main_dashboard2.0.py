@@ -6,21 +6,129 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-
-def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, memshala_data_path):
+##############################
+# 1) TIME-SERIES FUNCTION AT TOP-LEVEL
+##############################
+def create_demographic_time_series(selected_inst_key, selected_demo, data, institutions):
     """
-    Creates a complete trust dashboard component for Streamlit.
-
-    Parameters:
-    bibi_data_path (str): Path to Prime Minister data Excel file
-    tzal_data_path (str): Path to IDF data Excel file
-    mishtara_data_path (str): Path to Police data Excel file
-    memshala_data_path (str): Path to Government data Excel file
+    Plots a line chart by demographic dimension, using the 'data' dict
+    returned from create_trust_dashboard, as well as the institutions mapping.
     """
 
-    # ---- DATA PROCESSING FUNCTIONS ----
+    trust_scores = data.get(f"{selected_inst_key}_rows", pd.DataFrame())
+    if trust_scores.empty:
+        st.warning(f"No data available for {selected_inst_key}")
+        return
+
+    institution_name = institutions.get(selected_inst_key, "Unknown Institution")
+
+    # Example mapping
+    demo_mapping = {
+        "District": {
+            "North": {"hebrew": "צפון", "color": "rgb(0, 128, 255)"},
+            "Haifa": {"hebrew": "חיפה", "color": "rgb(255, 140, 0)"},
+            "Center": {"hebrew": "מרכז", "color": "rgb(50, 205, 50)"},
+            "Tel Aviv": {"hebrew": "תל אביב", "color": "rgb(255, 0, 255)"},
+            "Jerusalem": {"hebrew": "ירושלים", "color": "rgb(255, 215, 0)"},
+            "Judea & Samaria": {"hebrew": "יהודה ושומרון", "color": "rgb(128, 0, 128)"},
+            "South": {"hebrew": "דרום", "color": "rgb(220, 20, 60)"}
+        },
+        "Religiousness": {
+            "Ultra-Orthodox": {"hebrew": "חרדי", "color": "rgb(0, 0, 139)"},
+            "Religious": {"hebrew": "דתי", "color": "rgb(0, 0, 205)"},
+            "Traditional": {"hebrew": "מסורתי", "color": "rgb(30, 144, 255)"},
+            "Secular": {"hebrew": "חילוני", "color": "rgb(135, 206, 250)"}
+        },
+        "Political stance": {
+            "Right": {"hebrew": "ימין", "color": "rgb(255, 0, 0)"},
+            "Center": {"hebrew": "מרכז", "color": "rgb(0, 255, 0)"},
+            "Left": {"hebrew": "שמאל", "color": "rgb(0, 0, 255)"},
+            "Refuses to Answer": {"hebrew": "מסרב", "color": "rgb(128, 128, 128)"}
+        },
+        "Age": {
+            "75+": {"hebrew": "75+", "color": "rgb(139, 0, 0)"},
+            "65-74": {"hebrew": "65-74", "color": "rgb(178, 34, 34)"},
+            "55-64": {"hebrew": "55-64", "color": "rgb(205, 92, 92)"},
+            "45-54": {"hebrew": "45-54", "color": "rgb(240, 128, 128)"},
+            "35-44": {"hebrew": "35-44", "color": "rgb(250, 128, 114)"},
+            "25-34": {"hebrew": "25-34", "color": "rgb(255, 160, 122)"},
+            "18-24": {"hebrew": "18-24", "color": "rgb(255, 192, 203)"}
+        }
+    }
+
+    fig = go.Figure()
+
+    if selected_demo == "All" or not selected_demo:
+        # overall average
+        avg_trust = trust_scores.groupby("month_year")["trust_score"].mean().reset_index()
+        avg_trust["month_year_str"] = avg_trust["month_year"].astype(str)
+
+        fig.add_trace(go.Scatter(
+            x=avg_trust["month_year_str"],
+            y=avg_trust["trust_score"],
+            name="Overall Average Trust",
+            mode="lines+markers",
+            line=dict(width=2, color="black"),
+            marker=dict(size=8, color="black")
+        ))
+    else:
+        selected_map = demo_mapping.get(selected_demo, {})
+        for eng_label, value in selected_map.items():
+            sub_data = trust_scores[trust_scores["sub_subject"] == value["hebrew"]]
+            if not sub_data.empty:
+                monthly_avg = sub_data.groupby("month_year")["trust_score"].mean().reset_index()
+                monthly_avg["month_year_str"] = monthly_avg["month_year"].astype(str)
+                fig.add_trace(go.Scatter(
+                    x=monthly_avg["month_year_str"],
+                    y=monthly_avg["trust_score"],
+                    name=eng_label,
+                    mode="lines+markers",
+                    line=dict(width=2, color=value["color"]),
+                    marker=dict(size=8, color=value["color"])
+                ))
+
+    fig.update_layout(
+        xaxis_title="Month",
+        yaxis_title="Trust Score",
+        yaxis_range=[1, 4],
+        hovermode="x unified",
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.2,
+            xanchor="center",
+            x=0.5,
+            bgcolor="rgba(255, 255, 255, 0.8)"
+        ),
+        margin=dict(b=100),
+        annotations=[
+            dict(
+                xref="paper", yref="paper",
+                x=0.5, y=1.15,
+                text=f"Trust Scores for {institution_name} by {selected_demo or 'All'} Over Time",
+                showarrow=False,
+                font=dict(size=16, family="Arial", color="black"),
+                xanchor="center"
+            )
+        ]
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
+##############################
+# 2) MAIN DASHBOARD FUNCTION
+##############################
+def create_trust_dashboard(
+    bibi_data_path, tzal_data_path, mishtara_data_path, memshala_data_path,
+    selected_demo=None
+):
+    """
+    Creates a bar chart of average trust scores by institution,
+    returns (selected_point, data, institutions).
+    """
+
     def prepare_monthly_data_cases(data, keyword, columns):
-        """Filter rows containing keyword and compute weighted trust score."""
         filtered_data = data[data['q_full'].str.contains(keyword, case=False, na=False)].copy()
         filtered_data['date'] = pd.to_datetime(filtered_data['date'], errors='coerce')
         filtered_data.dropna(subset=['date'], inplace=True)
@@ -34,21 +142,18 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
         weights = list(range(len(available_cols), 0, -1))
 
         filtered_data['trust_score'] = (
-                sum(filtered_data[c] * w for c, w in zip(available_cols, weights))
-                / filtered_data[available_cols].sum(axis=1)
+            sum(filtered_data[c] * w for c, w in zip(available_cols, weights))
+            / filtered_data[available_cols].sum(axis=1)
         )
-
         return filtered_data
 
     def aggregate_monthly(df):
-        """Group by month and return average trust score per month."""
         if df.empty:
             return pd.DataFrame(columns=['month_year', 'trust_score'])
         return df.groupby('month_year', as_index=False)['trust_score'].mean().sort_values('month_year')
 
     @st.cache_data
     def load_data():
-        """Load and process data from Excel files."""
         try:
             bibi_data = pd.read_excel(bibi_data_path)
             tzal_data = pd.read_excel(tzal_data_path)
@@ -58,13 +163,11 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
             st.error(f"Error loading data: {e}")
             st.stop()
 
-        # Process row-level data
-        bibi_rows = prepare_monthly_data_cases(bibi_data, keyword="ראש ממשלה", columns=["a1", "a2", "a3", "a4"])
-        tzal_rows = prepare_monthly_data_cases(tzal_data, keyword="צהל", columns=["a1", "a2", "a3", "a4"])
-        mish_rows = prepare_monthly_data_cases(mishtara_data, keyword="משטרה", columns=["a1", "a2", "a3", "a4"])
-        mems_rows = prepare_monthly_data_cases(memshala_data, keyword="ממשלה", columns=["a1", "a2", "a3", "a4"])
+        bibi_rows = prepare_monthly_data_cases(bibi_data, "ראש ממשלה", ["a1","a2","a3","a4"])
+        tzal_rows = prepare_monthly_data_cases(tzal_data, "צהל", ["a1","a2","a3","a4"])
+        mish_rows = prepare_monthly_data_cases(mishtara_data, "משטרה", ["a1","a2","a3","a4"])
+        mems_rows = prepare_monthly_data_cases(memshala_data, "ממשלה", ["a1","a2","a3","a4"])
 
-        # Aggregate Monthly Data
         bibi_monthly = aggregate_monthly(bibi_rows)
         tzal_monthly = aggregate_monthly(tzal_rows)
         mish_monthly = aggregate_monthly(mish_rows)
@@ -95,16 +198,23 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
             "memshala_rows": mems_rows
         }
 
+    data = load_data()
+
+    institutions = {
+        "bibi": "Prime Minister",
+        "tzal": "IDF",
+        "mishtara": "Police",
+        "memshala": "Government"
+    }
+
     def plot_scatter_chart():
-        """Create the bar chart of average trust scores by institution."""
         scatter_data = []
         for inst, name in institutions.items():
-            # Skip if that dict key doesn't exist
-            if f"{inst}_scores" not in data:
+            key = f"{inst}_scores"
+            if key not in data:
                 continue
 
-            # Average across all months for each institution
-            scores_dict = data[f"{inst}_scores"]
+            scores_dict = data[key]
             if scores_dict:
                 avg_trust = sum(scores_dict.values()) / len(scores_dict)
             else:
@@ -116,7 +226,7 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
                 "Key": inst
             })
 
-        scatter_df = pd.DataFrame(scatter_data).sort_values(by="Trust Score", ascending=True)
+        scatter_df = pd.DataFrame(scatter_data).sort_values("Trust Score")
         fig = go.Figure()
 
         fig.add_trace(go.Bar(
@@ -131,151 +241,20 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
         fig.update_layout(
             title="Trust Scores by Institution (overall average : 2.36)",
             xaxis=dict(title="Institution"),
-            yaxis=dict(title="Trust Score", range=[0, 4]),
+            yaxis=dict(title="Trust Score", range=[0,4]),
             showlegend=False,
             bargap=0.5
         )
         return fig
 
-    def create_demographic_time_series(selected_inst_key):
-        """Create and display the time-series chart by demographic dimension."""
-        trust_scores = data.get(f"{selected_inst_key}_rows", pd.DataFrame())
-        if trust_scores.empty:
-            st.warning(f"No data available for {selected_inst_key}")
-            return
+    # Build bar chart
+    bar_fig = plot_scatter_chart()
+    selected_point = plotly_events(bar_fig, click_event=True, key="bar_chart")
+    # st.plotly_chart(bar_fig, use_container_width=True)
 
-        institution_name = institutions.get(selected_inst_key, "Unknown Institution")
+    # Return the user’s click + data + institutions so we can call create_demographic_time_series outside
+    return selected_point, data, institutions
 
-        demo_mapping = {
-            "District": {
-                "North": {"hebrew": "צפון", "color": "rgb(0, 128, 255)"},
-                "Haifa": {"hebrew": "חיפה", "color": "rgb(255, 140, 0)"},
-                "Center": {"hebrew": "מרכז", "color": "rgb(50, 205, 50)"},
-                "Tel Aviv": {"hebrew": "תל אביב", "color": "rgb(255, 0, 255)"},
-                "Jerusalem": {"hebrew": "ירושלים", "color": "rgb(255, 215, 0)"},
-                "Judea & Samaria": {"hebrew": "יהודה ושומרון", "color": "rgb(128, 0, 128)"},
-                "South": {"hebrew": "דרום", "color": "rgb(220, 20, 60)"}
-            },
-            "Religiousness": {
-                "Ultra-Orthodox": {"hebrew": "חרדי", "color": "rgb(0, 0, 139)"},
-                "Religious": {"hebrew": "דתי", "color": "rgb(0, 0, 205)"},
-                "Traditional": {"hebrew": "מסורתי", "color": "rgb(30, 144, 255)"},
-                "Secular": {"hebrew": "חילוני", "color": "rgb(135, 206, 250)"}
-            },
-            "Political stance": {
-                "Right": {"hebrew": "ימין", "color": "rgb(255, 0, 0)"},
-                "Center": {"hebrew": "מרכז", "color": "rgb(0, 255, 0)"},
-                "Left": {"hebrew": "שמאל", "color": "rgb(0, 0, 255)"},
-                "Refuses to Answer": {"hebrew": "מסרב", "color": "rgb(128, 128, 128)"}
-            },
-            "Age": {
-                "75+": {"hebrew": "75+", "color": "rgb(139, 0, 0)"},
-                "65-74": {"hebrew": "65-74", "color": "rgb(178, 34, 34)"},
-                "55-64": {"hebrew": "55-64", "color": "rgb(205, 92, 92)"},
-                "45-54": {"hebrew": "45-54", "color": "rgb(240, 128, 128)"},
-                "35-44": {"hebrew": "35-44", "color": "rgb(250, 128, 114)"},
-                "25-34": {"hebrew": "25-34", "color": "rgb(255, 160, 122)"},
-                "18-24": {"hebrew": "18-24", "color": "rgb(255, 192, 203)"}
-            }
-        }
-
-        # We create two columns: one for the radio button on the left, one for the chart on the right
-        col_left, col_right = st.columns([0.2, 0.8])
-        with col_left:
-            demo_choice = st.radio("Choose a demographic dimension:", ["All"] + list(demo_mapping.keys()), index=0)
-
-        with col_right:
-            fig = go.Figure()
-            if demo_choice == "All":
-                # Overall average trust for this institution
-                avg_trust = trust_scores.groupby("month_year")["trust_score"].mean().reset_index()
-                avg_trust["month_year_str"] = avg_trust["month_year"].astype(str)
-
-                fig.add_trace(go.Scatter(
-                    x=avg_trust["month_year_str"],
-                    y=avg_trust["trust_score"],
-                    name="Overall Average Trust",
-                    mode="lines+markers",
-                    line=dict(width=2, color="black"),
-                    marker=dict(size=8, color="black")
-                ))
-            else:
-                selected_map = demo_mapping[demo_choice]
-                for eng_label, value in selected_map.items():
-                    sub_data = trust_scores[trust_scores["sub_subject"] == value["hebrew"]]
-                    if not sub_data.empty:
-                        monthly_avg = sub_data.groupby("month_year")["trust_score"].mean().reset_index()
-                        monthly_avg["month_year_str"] = monthly_avg["month_year"].astype(str)
-                        fig.add_trace(go.Scatter(
-                            x=monthly_avg["month_year_str"],
-                            y=monthly_avg["trust_score"],
-                            name=eng_label,
-                            mode="lines+markers",
-                            connectgaps=True,
-                            line=dict(width=2, color=value["color"]),
-                            marker=dict(size=8, color=value["color"])
-                        ))
-
-            fig.update_layout(
-                xaxis_title="Month",
-                yaxis_title="Trust Score",
-                yaxis_range=[1, 4],
-                hovermode="x unified",
-                legend=dict(
-                    orientation="h",
-                    yanchor="top",
-                    y=-0.2,
-                    xanchor="center",
-                    x=0.5,
-                    bgcolor="rgba(255, 255, 255, 0.8)"
-                ),
-                margin=dict(b=100),
-                annotations=[
-                    dict(
-                        xref="paper", yref="paper",
-                        x=0.5, y=1.15,
-                        text=f"Trust Scores for {institution_name} by {demo_choice} Over Time",
-                        showarrow=False,
-                        font=dict(size=16, family="Arial", color="black"),
-                        xanchor="center"
-                    )
-                ]
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-        # st.plotly_chart(fig, use_container_width=True)
-
-    # ---- MAIN DASHBOARD LAYOUT ----
-    # st.title("Israeli Sentiments Dashboard")
-    # st.subheader("Trust in Institutions Over Time")
-
-    # Load Data
-    data = load_data()
-    months = data["months"]
-
-    # Institution Mapping
-    institutions = {
-        "bibi": "Prime Minister",
-        "tzal": "IDF",
-        "mishtara": "Police",
-        "memshala": "Government"
-    }
-
-    # Color Mapping
-    color_map = {
-        "bibi": "#FF5733",
-        "tzal": "#2ECC71",
-        "mishtara": "#3498DB",
-        "memshala": "#F39C12"
-    }
-
-    # Interactive event capture
-    selected_point = plotly_events(plot_scatter_chart(), click_event=True)
-
-    if selected_point:
-        selected_inst = selected_point[0]["x"]
-        selected_inst_key = next((key for key, val in institutions.items() if val == selected_inst), None)
-        create_demographic_time_series(selected_inst_key)
 
 # Generate a list of discrete months for the slider (Make it globally available)
 start_date = pd.Timestamp(2023, 10, 1).date()
@@ -1101,29 +1080,48 @@ elif visualization == "Dashboard Overview":
 if visualization == "Public Trust In Institutions And Public Figures":
     st.header("Public Trust In Institutions And Public Figures")
 
-    col7, col8 = st.columns([1, 2])
+    # ROW 1: text on the left, bar chart on the right
+    row1_left, row1_right = st.columns([1, 2])
 
-    with col7:
+    with row1_left:
+        # Display instructions at the top
         public_trust_text()
-        # demo_choice = st.radio("Choose a demographic dimension:",
-        #                        ["District", "Religiousness", "Political stance", "Age"])  # Move radio buttons here
 
-    with col8:
-        # Usage example:
-        create_trust_dashboard(
+    with row1_right:
+        # Show the bar chart, capture the user's click
+        selected_point, data, institutions = create_trust_dashboard(
             bibi_data_path="data_storage/bibi.xlsx",
             tzal_data_path="data_storage/tzal.xlsx",
             mishtara_data_path="data_storage/mishtra.xlsx",
             memshala_data_path="data_storage/memshla.xlsx"
         )
 
-    # # Usage example:
-    # create_trust_dashboard(
-    #     bibi_data_path="data_storage/bibi.xlsx",
-    #     tzal_data_path="data_storage/tzal.xlsx",
-    #     mishtara_data_path="data_storage/mishtra.xlsx",
-    #     memshala_data_path="data_storage/memshla.xlsx"
-    # )
+    # If user clicked on a bar, create a new horizontal row below
+    if selected_point:
+        # Optional: A horizontal rule for visual separation
+        st.markdown("---")
+
+        # ROW 2: radio on the left, line plot on the right
+        row2_left, row2_right = st.columns([1, 2])
+
+        with row2_left:
+            # The radio button is now in the second row, left column
+            selected_demo = st.radio(
+                "Choose a demographic dimension:",
+                ["All", "District", "Religiousness", "Political stance", "Age"],
+                index=0
+            )
+
+        with row2_right:
+            # Render the time‐series line plot side by side with the radio
+            clicked_institution = selected_point[0]["x"]
+            selected_inst_key = next(
+                (k for k, val in institutions.items() if val == clicked_institution),
+                None
+            )
+            create_demographic_time_series(selected_inst_key, selected_demo, data, institutions)
+
+
 
 
 elif visualization == "Israel’s Social Outlook":

@@ -6,23 +6,129 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-
-
-
-def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, memshala_data_path):
+##############################
+# 1) TIME-SERIES FUNCTION AT TOP-LEVEL
+##############################
+def create_demographic_time_series(selected_inst_key, selected_demo, data, institutions):
     """
-    Creates a complete trust dashboard component for Streamlit.
-
-    Parameters:
-    bibi_data_path (str): Path to Prime Minister data Excel file
-    tzal_data_path (str): Path to IDF data Excel file
-    mishtara_data_path (str): Path to Police data Excel file
-    memshala_data_path (str): Path to Government data Excel file
+    Plots a line chart by demographic dimension, using the 'data' dict
+    returned from create_trust_dashboard, as well as the institutions mapping.
     """
 
-    # ---- DATA PROCESSING FUNCTIONS ----
+    trust_scores = data.get(f"{selected_inst_key}_rows", pd.DataFrame())
+    if trust_scores.empty:
+        st.warning(f"No data available for {selected_inst_key}")
+        return
+
+    institution_name = institutions.get(selected_inst_key, "Unknown Institution")
+
+    # Example mapping
+    demo_mapping = {
+        "District": {
+            "North": {"hebrew": "צפון", "color": "rgb(0, 128, 255)"},
+            "Haifa": {"hebrew": "חיפה", "color": "rgb(255, 140, 0)"},
+            "Center": {"hebrew": "מרכז", "color": "rgb(50, 205, 50)"},
+            "Tel Aviv": {"hebrew": "תל אביב", "color": "rgb(255, 0, 255)"},
+            "Jerusalem": {"hebrew": "ירושלים", "color": "rgb(255, 215, 0)"},
+            "Judea & Samaria": {"hebrew": "יהודה ושומרון", "color": "rgb(128, 0, 128)"},
+            "South": {"hebrew": "דרום", "color": "rgb(220, 20, 60)"}
+        },
+        "Religiousness": {
+            "Ultra-Orthodox": {"hebrew": "חרדי", "color": "rgb(0, 0, 139)"},
+            "Religious": {"hebrew": "דתי", "color": "rgb(0, 0, 205)"},
+            "Traditional": {"hebrew": "מסורתי", "color": "rgb(30, 144, 255)"},
+            "Secular": {"hebrew": "חילוני", "color": "rgb(135, 206, 250)"}
+        },
+        "Political stance": {
+            "Right": {"hebrew": "ימין", "color": "rgb(255, 0, 0)"},
+            "Center": {"hebrew": "מרכז", "color": "rgb(0, 255, 0)"},
+            "Left": {"hebrew": "שמאל", "color": "rgb(0, 0, 255)"},
+            "Refuses to Answer": {"hebrew": "מסרב", "color": "rgb(128, 128, 128)"}
+        },
+        "Age": {
+            "75+": {"hebrew": "75+", "color": "rgb(139, 0, 0)"},
+            "65-74": {"hebrew": "65-74", "color": "rgb(178, 34, 34)"},
+            "55-64": {"hebrew": "55-64", "color": "rgb(205, 92, 92)"},
+            "45-54": {"hebrew": "45-54", "color": "rgb(240, 128, 128)"},
+            "35-44": {"hebrew": "35-44", "color": "rgb(250, 128, 114)"},
+            "25-34": {"hebrew": "25-34", "color": "rgb(255, 160, 122)"},
+            "18-24": {"hebrew": "18-24", "color": "rgb(255, 192, 203)"}
+        }
+    }
+
+    fig = go.Figure()
+
+    if selected_demo == "All" or not selected_demo:
+        # overall average
+        avg_trust = trust_scores.groupby("month_year")["trust_score"].mean().reset_index()
+        avg_trust["month_year_str"] = avg_trust["month_year"].astype(str)
+
+        fig.add_trace(go.Scatter(
+            x=avg_trust["month_year_str"],
+            y=avg_trust["trust_score"],
+            name="Overall Average Trust",
+            mode="lines+markers",
+            line=dict(width=2, color="black"),
+            marker=dict(size=8, color="black")
+        ))
+    else:
+        selected_map = demo_mapping.get(selected_demo, {})
+        for eng_label, value in selected_map.items():
+            sub_data = trust_scores[trust_scores["sub_subject"] == value["hebrew"]]
+            if not sub_data.empty:
+                monthly_avg = sub_data.groupby("month_year")["trust_score"].mean().reset_index()
+                monthly_avg["month_year_str"] = monthly_avg["month_year"].astype(str)
+                fig.add_trace(go.Scatter(
+                    x=monthly_avg["month_year_str"],
+                    y=monthly_avg["trust_score"],
+                    name=eng_label,
+                    mode="lines+markers",
+                    line=dict(width=2, color=value["color"]),
+                    marker=dict(size=8, color=value["color"])
+                ))
+
+    fig.update_layout(
+        xaxis_title="Month",
+        yaxis_title="Trust Score",
+        yaxis_range=[1, 4],
+        hovermode="x unified",
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.2,
+            xanchor="center",
+            x=0.5,
+            bgcolor="rgba(255, 255, 255, 0.8)"
+        ),
+        margin=dict(b=100),
+        annotations=[
+            dict(
+                xref="paper", yref="paper",
+                x=0.5, y=1.15,
+                text=f"Trust Scores for {institution_name} by {selected_demo or 'All'} Over Time",
+                showarrow=False,
+                font=dict(size=16, family="Arial", color="black"),
+                xanchor="center"
+            )
+        ]
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
+##############################
+# 2) MAIN DASHBOARD FUNCTION
+##############################
+def create_trust_dashboard(
+    bibi_data_path, tzal_data_path, mishtara_data_path, memshala_data_path,
+    selected_demo=None
+):
+    """
+    Creates a bar chart of average trust scores by institution,
+    returns (selected_point, data, institutions).
+    """
+
     def prepare_monthly_data_cases(data, keyword, columns):
-        """Filter rows containing keyword and compute weighted trust score."""
         filtered_data = data[data['q_full'].str.contains(keyword, case=False, na=False)].copy()
         filtered_data['date'] = pd.to_datetime(filtered_data['date'], errors='coerce')
         filtered_data.dropna(subset=['date'], inplace=True)
@@ -36,21 +142,18 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
         weights = list(range(len(available_cols), 0, -1))
 
         filtered_data['trust_score'] = (
-                sum(filtered_data[c] * w for c, w in zip(available_cols, weights))
-                / filtered_data[available_cols].sum(axis=1)
+            sum(filtered_data[c] * w for c, w in zip(available_cols, weights))
+            / filtered_data[available_cols].sum(axis=1)
         )
-
         return filtered_data
 
     def aggregate_monthly(df):
-        """Group by month and return average trust score per month."""
         if df.empty:
             return pd.DataFrame(columns=['month_year', 'trust_score'])
         return df.groupby('month_year', as_index=False)['trust_score'].mean().sort_values('month_year')
 
     @st.cache_data
     def load_data():
-        """Load and process data from Excel files."""
         try:
             bibi_data = pd.read_excel(bibi_data_path)
             tzal_data = pd.read_excel(tzal_data_path)
@@ -60,13 +163,11 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
             st.error(f"Error loading data: {e}")
             st.stop()
 
-        # Process row-level data
-        bibi_rows = prepare_monthly_data_cases(bibi_data, keyword="ראש ממשלה", columns=["a1", "a2", "a3", "a4"])
-        tzal_rows = prepare_monthly_data_cases(tzal_data, keyword="צהל", columns=["a1", "a2", "a3", "a4"])
-        mish_rows = prepare_monthly_data_cases(mishtara_data, keyword="משטרה", columns=["a1", "a2", "a3", "a4"])
-        mems_rows = prepare_monthly_data_cases(memshala_data, keyword="ממשלה", columns=["a1", "a2", "a3", "a4"])
+        bibi_rows = prepare_monthly_data_cases(bibi_data, "ראש ממשלה", ["a1","a2","a3","a4"])
+        tzal_rows = prepare_monthly_data_cases(tzal_data, "צהל", ["a1","a2","a3","a4"])
+        mish_rows = prepare_monthly_data_cases(mishtara_data, "משטרה", ["a1","a2","a3","a4"])
+        mems_rows = prepare_monthly_data_cases(memshala_data, "ממשלה", ["a1","a2","a3","a4"])
 
-        # Aggregate Monthly Data
         bibi_monthly = aggregate_monthly(bibi_rows)
         tzal_monthly = aggregate_monthly(tzal_rows)
         mish_monthly = aggregate_monthly(mish_rows)
@@ -75,10 +176,12 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
         for df in [bibi_monthly, tzal_monthly, mish_monthly, memshala_monthly]:
             df['month_year_str'] = df['month_year'].astype(str)
 
-        all_months = sorted(set(bibi_monthly['month_year_str'])
-                            .union(tzal_monthly['month_year_str'])
-                            .union(mish_monthly['month_year_str'])
-                            .union(memshala_monthly['month_year_str']))
+        all_months = sorted(
+            set(bibi_monthly['month_year_str'])
+            .union(tzal_monthly['month_year_str'])
+            .union(mish_monthly['month_year_str'])
+            .union(memshala_monthly['month_year_str'])
+        )
 
         def df_to_dict(df):
             return dict(zip(df['month_year_str'], df['trust_score']))
@@ -95,173 +198,8 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
             "memshala_rows": mems_rows
         }
 
-    def plot_scatter_chart():
-        scatter_data = []
-
-
-        for inst, name in institutions.items():
-            if f"{inst}_scores" not in data:
-                continue
-
-            avg_trust = sum(data[f"{inst}_scores"].values()) / len(data[f"{inst}_scores"]) if data[
-                f"{inst}_scores"] else 0
-
-            scatter_data.append({
-                "Institution": name,
-                "Trust Score": avg_trust,
-                "Key": inst
-            })
-
-        scatter_df = pd.DataFrame(scatter_data)
-        scatter_df = scatter_df.sort_values(by="Trust Score", ascending=True)
-        fig = go.Figure()
-
-        fig.add_trace(go.Bar(
-            x=scatter_df["Institution"],
-            y=scatter_df["Trust Score"],
-            marker=dict(
-                color="gray",  # Keep original colors
-                line=dict(width=2, color="white")  # Keep the white border for readability
-            ),
-            text=[f"{val:.2f}" for val in scatter_df["Trust Score"]],
-            textposition="outside",  # Show text outside the bar
-            name="Trust Scores by Institution",
-            hovertemplate=(
-                    "<b>Institution</b>: %{x}<br>" +  # Show Institution name
-                    "<b>Trust Score</b>: %{y:.2f}<br>" +  # Show Trust Score
-                    "<extra></extra>"  # Remove extra hover info
-            )
-        ))
-
-        fig.update_layout(
-            title="Trust Scores by Institution (overall average : 2.36)",
-            xaxis=dict(title="Institution"),
-            yaxis=dict(title="Trust Score", range=[0, 4]),  # Assuming scores range 1-4
-            showlegend=False,  # No need for a separate legend, colors represent institutions
-            bargap = 0.5  # Increase space between bars to make them thinner
-        )
-
-        return fig
-    def create_demographic_time_series(selected_inst_key):
-        trust_scores = data.get(f"{selected_inst_key}_rows", pd.DataFrame())
-
-        if trust_scores.empty:
-            st.warning(f"No data available for {selected_inst_key}")
-            return None
-
-        institution_name = institutions.get(selected_inst_key, "Unknown Institution")
-
-        demo_mapping = {
-            "District": {
-                "North": {"hebrew": "צפון", "color": "rgb(0, 128, 255)"},
-                "Haifa": {"hebrew": "חיפה", "color": "rgb(255, 140, 0)"},
-                "Center": {"hebrew": "מרכז", "color": "rgb(50, 205, 50)"},
-                "Tel Aviv": {"hebrew": "תל אביב", "color": "rgb(255, 0, 255)"},
-                "Jerusalem": {"hebrew": "ירושלים", "color": "rgb(255, 215, 0)"},
-                "Judea & Samaria": {"hebrew": "יהודה ושומרון", "color": "rgb(128, 0, 128)"},
-                "South": {"hebrew": "דרום", "color": "rgb(220, 20, 60)"}
-            },
-            "Religiousness": {
-                "Ultra-Orthodox": {"hebrew": "חרדי", "color": "rgb(0, 0, 139)"},
-                "Religious": {"hebrew": "דתי", "color": "rgb(0, 0, 205)"},
-                "Traditional": {"hebrew": "מסורתי", "color": "rgb(30, 144, 255)"},
-                "Secular": {"hebrew": "חילוני", "color": "rgb(135, 206, 250)"}
-            },
-            "Political stance": {
-                "Right": {"hebrew": "ימין", "color": "rgb(255, 0, 0)"},
-                "Center": {"hebrew": "מרכז", "color": "rgb(0, 255, 0)"},
-                "Left": {"hebrew": "שמאל", "color": "rgb(0, 0, 255)"},
-                "Refuses to Answer": {"hebrew": "מסרב", "color": "rgb(128, 128, 128)"}
-            },
-            "Age": {
-                "75+": {"hebrew": "75+", "color": "rgb(139, 0, 0)"},
-                "65-74": {"hebrew": "65-74", "color": "rgb(178, 34, 34)"},
-                "55-64": {"hebrew": "55-64", "color": "rgb(205, 92, 92)"},
-                "45-54": {"hebrew": "45-54", "color": "rgb(240, 128, 128)"},
-                "35-44": {"hebrew": "35-44", "color": "rgb(250, 128, 114)"},
-                "25-34": {"hebrew": "25-34", "color": "rgb(255, 160, 122)"},
-                "18-24": {"hebrew": "18-24", "color": "rgb(255, 192, 203)"}
-            }
-        }
-
-        col11, col22 = st.columns([0.2, 0.8])
-        with col11:
-            demo_choice = st.radio("Choose a demographic dimension:", ["All"] + list(demo_mapping.keys()), index=0)
-
-        with col22:
-            fig = go.Figure()
-
-            if demo_choice == "All":
-                # Compute overall average trust for this institution (across all segments)
-                avg_trust = trust_scores.groupby("month_year")["trust_score"].mean().reset_index()
-                avg_trust["month_year_str"] = avg_trust["month_year"].astype(str)
-
-                fig.add_trace(go.Scatter(
-                    x=avg_trust["month_year_str"],
-                    y=avg_trust["trust_score"],
-                    name="Overall Average Trust",
-                    mode="lines+markers",
-                    line=dict(width=2, color="black"),
-                    marker=dict(size=8, color="black")
-                ))
-            else:
-                selected_map = demo_mapping.get(demo_choice, {})
-
-                for eng_label, value in selected_map.items():
-                    sub_data = trust_scores[trust_scores["sub_subject"] == value["hebrew"]]
-                    if not sub_data.empty:
-                        monthly_avg = sub_data.groupby("month_year")["trust_score"].mean().reset_index()
-                        monthly_avg["month_year_str"] = monthly_avg["month_year"].astype(str)
-                        fig.add_trace(go.Scatter(
-                            x=monthly_avg["month_year_str"],
-                            y=monthly_avg["trust_score"],
-                            name=eng_label,
-                            mode="lines+markers",
-                            connectgaps=True,
-                            line=dict(width=2, color=value["color"]),
-                            marker=dict(size=8, color=value["color"])
-                        ))
-
-            fig.update_layout(
-                xaxis_title="Month",
-                yaxis_title="Trust Score",
-                yaxis_range=[1, 4],
-                hovermode="x unified",
-                legend=dict(
-                    orientation="h",
-                    yanchor="top",
-                    y=-0.2,
-                    xanchor="center",
-                    x=0.5,
-                    bgcolor="rgba(255, 255, 255, 0.8)"
-                ),
-                margin=dict(b=100),
-                annotations=[
-                    dict(
-                        xref="paper", yref="paper",
-                        x=0.5, y=1.15,  # Positioning above the plot
-                        text=f"Trust Scores for {institution_name} by {demo_choice} Over Time",
-                        showarrow=False,
-                        font=dict(size=16, family="Arial", color="black"),
-                        xanchor="center"
-                    )
-                ]
-            )
-
-
-            st.plotly_chart(fig, use_container_width=True)
-
-        # st.plotly_chart(fig, use_container_width=True)
-
-    # ---- MAIN DASHBOARD LAYOUT ----
-    # st.title("Israeli Sentiments Dashboard")
-    # st.subheader("Trust in Institutions Over Time")
-
-    # Load Data
     data = load_data()
-    months = data["months"]
 
-    # Institution Mapping
     institutions = {
         "bibi": "Prime Minister",
         "tzal": "IDF",
@@ -269,21 +207,54 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
         "memshala": "Government"
     }
 
-    # Color Mapping
-    color_map = {
-        "bibi": "#FF5733",
-        "tzal": "#2ECC71",
-        "mishtara": "#3498DB",
-        "memshala": "#F39C12"
-    }
+    def plot_scatter_chart():
+        scatter_data = []
+        for inst, name in institutions.items():
+            key = f"{inst}_scores"
+            if key not in data:
+                continue
 
-    # Interactive event capture
-    selected_point = plotly_events(plot_scatter_chart(), click_event=True)
+            scores_dict = data[key]
+            if scores_dict:
+                avg_trust = sum(scores_dict.values()) / len(scores_dict)
+            else:
+                avg_trust = 0
 
-    if selected_point:
-        selected_inst = selected_point[0]["x"]
-        selected_inst_key = next((key for key, val in institutions.items() if val == selected_inst), None)
-        create_demographic_time_series(selected_inst_key)
+            scatter_data.append({
+                "Institution": name,
+                "Trust Score": avg_trust,
+                "Key": inst
+            })
+
+        scatter_df = pd.DataFrame(scatter_data).sort_values("Trust Score")
+        fig = go.Figure()
+
+        fig.add_trace(go.Bar(
+            x=scatter_df["Institution"],
+            y=scatter_df["Trust Score"],
+            marker=dict(color="gray", line=dict(width=2, color="white")),
+            text=[f"{val:.2f}" for val in scatter_df["Trust Score"]],
+            textposition="outside",
+            hovertemplate="<b>Institution</b>: %{x}<br><b>Trust Score</b>: %{y:.2f}<extra></extra>"
+        ))
+
+        fig.update_layout(
+            title="Trust Scores by Institution (overall average : 2.36)",
+            xaxis=dict(title="Institution"),
+            yaxis=dict(title="Trust Score", range=[0,4]),
+            showlegend=False,
+            bargap=0.5
+        )
+        return fig
+
+    # Build bar chart
+    bar_fig = plot_scatter_chart()
+    selected_point = plotly_events(bar_fig, click_event=True, key="bar_chart")
+    # st.plotly_chart(bar_fig, use_container_width=True)
+
+    # Return the user’s click + data + institutions so we can call create_demographic_time_series outside
+    return selected_point, data, institutions
+
 
 # Generate a list of discrete months for the slider (Make it globally available)
 start_date = pd.Timestamp(2023, 10, 1).date()
@@ -456,63 +427,76 @@ def create_solidarity_dashboard():
     Users can select surveys, questions, and visualization types to view the data.
     """
 
-    # --------------------------------------------------------------------------
     # 1. Mapping of English question labels to Hebrew question strings
-    # --------------------------------------------------------------------------
     question_mapping = {
-        'Are you or a first-degree family member involved in combat?': 'האם את.ה או בן משפחה בדרגה ראשונה שלך לוקח חלק בלחימה?',
-        'Are you or a first-degree family member residing near the Gaza envelope or northern border?': 'האם את.ה או בן משפחה בדרגה ראשונה שלך מתגורר בעוטף עזה או בגבול הצפון?',
-        'Gender': 'מגדר'
+        "Are you or a first-degree family member involved in combat?":
+            "האם את.ה או בן משפחה בדרגה ראשונה שלך לוקח חלק בלחימה?",
+        "Are you or a first-degree family member residing near the Gaza envelope or northern border?":
+            "האם את.ה או בן משפחה בדרגה ראשונה שלך מתגורר בעוטף עזה או בגבול הצפון?",
+        "Gender": "מגדר"
     }
 
-    # --------------------------------------------------------------------------
-    # 2. File options with improved text
-    # --------------------------------------------------------------------------
+    # 2. File selection with predefined questions (English labels)
     file_options = {
-        'Changes in the sense of solidarity': 'solidarity_data/solidarity.xlsx',
-        'Concern about Israel\'s social situation on the day after the war': 'solidarity_data/matzv_chvrati.xlsx',
-        'Optimism about Israeli society\'s ability to recover from the crisis': 'solidarity_data/mashber.xlsx'
+        "Has there been a change in the sense of solidarity in Israeli society at this time?":
+            "solidarity_data/solidarity.xlsx",
+        "How concerned are you about Israel's social situation on the day after the war?":
+            "solidarity_data/matzv_chvrati.xlsx",
+        "How optimistic are you about Israeli society's ability to recover from the crisis and grow?":
+            "solidarity_data/mashber.xlsx"
     }
 
-    # --------------------------------------------------------------------------
-    # 3. Define response mappings (Hebrew question → English labels)
-    # --------------------------------------------------------------------------
+    # 3. Response mappings (in Hebrew → displayed as English)
     response_mappings = {
-        'עד כמה את.ה מוטרד.ת או לא מוטרד.ת ממצבה החברתי של ישראל ביום שאחרי המלחמה דרג בסולם של 1-5, כאשר 5 = מוטרד מאד ו - 1 = לא מוטרד כלל': {
-            'a1': 'Not concerned at all',
-            'a2': 'Slightly concerned',
-            'a3': 'Moderately concerned',
-            'a4': 'Concerned',
-            'a5': 'Very concerned'
+        "עד כמה את.ה מוטרד.ת או לא מוטרד.ת ממצבה החברתי של ישראל ביום שאחרי המלחמה דרג בסולם של 1-5, כאשר 5 = מוטרד מאד ו - 1 = לא מוטרד כלל": {
+            "a1": "Not concerned at all",
+            "a2": "Slightly concerned",
+            "a3": "Moderately concerned",
+            "a4": "Concerned",
+            "a5": "Very concerned"
         },
-        'עד כמה אתה אופטימי ביחס ליכולתה של החברה הישראלית להתאושש מהמשבר ולצמוח': {
-            'a4': 'Very optimistic',
-            'a3': 'Somewhat optimistic',
-            'a2': 'Somewhat pessimistic',
-            'a1': 'Very pessimistic'
+        "עד כמה אתה אופטימי ביחס ליכולתה של החברה הישראלית להתאושש מהמשבר ולצמוח": {
+            "a4": "Very optimistic",
+            "a3": "Somewhat optimistic",
+            "a2": "Somewhat pessimistic",
+            "a1": "Very pessimistic"
         },
-        'האם חל שינוי בתחושת הסולידריות בחברה הישראלית בעת הזו': {
-            'a1': 'Solidarity has strengthened significantly',
-            'a2': 'Solidarity has somewhat strengthened',
-            'a3': 'No change in solidarity',
-            'a4': 'Solidarity has somewhat decreased',
-            'a5': 'Solidarity has significantly decreased'
+        "האם חל שינוי בתחושת הסולידריות בחברה הישראלית בעת הזו": {
+            "a1": "Solidarity has strengthened significantly",
+            "a2": "Solidarity has somewhat strengthened",
+            "a3": "No change in solidarity",
+            "a4": "Solidarity has somewhat decreased",
+            "a5": "Solidarity has significantly decreased"
         }
     }
 
-    # --------------------------------------------------------------------------
-    # 4. Predefined questions in English (for the segmentation dropdown)
-    # --------------------------------------------------------------------------
+    # 4. The original 'predefined_questions' list (English labels)
     predefined_questions = list(question_mapping.keys())
 
     # --------------------------------------------------------------------------
-    # Streamlit UI Controls
+    # 5. Here is the NEW PART: concise statements to replace the question text
     # --------------------------------------------------------------------------
+    concise_statements = {
+        "Are you or a first-degree family member involved in combat?":
+            "Involved in combat (self or first-degree family member)",
+        "Are you or a first-degree family member residing near the Gaza envelope or northern border?":
+            "Residing near Gaza/northern border (self or first-degree family member)",
+        "Gender": "Gender"
+    }
+
+    # We'll build a reverse lookup to recover the original question from its short statement
+    statement_to_question = {v: k for k, v in concise_statements.items()}
+
+    # --------------------------------------------------------------------------
+    # 6. Streamlit UI
+    # --------------------------------------------------------------------------
+    # File selection dropdown
     selected_file = st.selectbox(
-        'Select Subject to Display:',
+        "Select Subject to Display:",
         list(file_options.keys())
     )
 
+    # Two columns for layout
     col1, col2 = st.columns([0.8, 2.2])
 
     with col1:
@@ -521,23 +505,25 @@ def create_solidarity_dashboard():
             ["Aggregated results", "Results over time"]
         )
 
+    # Instead of displaying the original question, we display the concise statement
     with col2:
-        selected_question = st.selectbox(
-            'Select segmentation to display:',
-            predefined_questions
+        selected_statement = st.selectbox(
+            "Select segmentation to display:",
+            [concise_statements[q] for q in predefined_questions]
         )
 
+    # Convert the selected statement back to the original question key
+    selected_question = statement_to_question.get(selected_statement, selected_statement)
+
     # --------------------------------------------------------------------------
-    # Retrieve the Hebrew question string
+    # 7. Find the Hebrew question string
     # --------------------------------------------------------------------------
     hebrew_question = question_mapping.get(selected_question)
 
-    # --------------------------------------------------------------------------
-    # Load data with error handling
-    # --------------------------------------------------------------------------
+    # 8. Load the data
     try:
         df = pd.read_excel(file_options[selected_file])
-        df['date'] = pd.to_datetime(df['date'])
+        df["date"] = pd.to_datetime(df["date"])
     except FileNotFoundError:
         st.error(f"The selected survey file '{selected_file}' was not found. Please check the file path.")
         return
@@ -545,21 +531,17 @@ def create_solidarity_dashboard():
         st.error(f"An error occurred while loading the data: {e}")
         return
 
-    # --------------------------------------------------------------------------
-    # Filter data for the chosen question
-    # --------------------------------------------------------------------------
+    # 9. Filter data for this Hebrew question
     if hebrew_question:
-        question_data = df[df['subject'] == hebrew_question].copy()
-        question_data = question_data[question_data['sub_subject'] != 'Total']
+        question_data = df[df["subject"] == hebrew_question].copy()
+        question_data = question_data[question_data["sub_subject"] != "Total"]
     else:
         st.error("Selected question mapping not found.")
         return
 
-    full_question = df['q_full'].iloc[0] if not df.empty else None
+    full_question = df["q_full"].iloc[0] if not df.empty else None
 
-    # --------------------------------------------------------------------------
-    # Depending on viz type, create bar or line plot
-    # --------------------------------------------------------------------------
+    # 10. Choose which visualization to draw
     if viz_type == "Aggregated results":
         create_bar_chart(question_data, full_question, selected_question, response_mappings)
     else:
@@ -567,46 +549,41 @@ def create_solidarity_dashboard():
 
 
 # --------------------------------------------------------------------------
-# Short question titles for the chart (optional convenience)
+# Short question forms for chart titles
 # --------------------------------------------------------------------------
 QUESTION_SHORT_FORMS = {
-    'Are you or a first-degree family member involved in combat?': 'Combat involvement',
-    'Are you or a first-degree family member residing near the Gaza envelope or northern border?': 'Border residence',
-    'How concerned are you about Israel\'s social situation on the day after the war?': 'Post-war concerns',
-    'How optimistic are you about Israeli society\'s ability to recover from the crisis and grow?': 'Recovery optimism',
-    'Has there been a change in the sense of solidarity in Israeli society at this time?': 'Solidarity change'
+    "Are you or a first-degree family member involved in combat?": "Combat involvement (family)",
+    "Are you or a first-degree family member residing near the Gaza envelope or northern border?": "Border residence (family)",
+    "How concerned are you about Israel's social situation on the day after the war?": "Post-war concerns",
+    "How optimistic are you about Israeli society's ability to recover from the crisis and grow?": "Recovery optimism",
+    "Has there been a change in the sense of solidarity in Israeli society at this time?": "Solidarity change"
 }
-
 
 def create_bar_chart(question_data, full_question, selected_question, response_mappings):
     """
-    Creates a horizontal bar chart with an x-axis range capped near 70%.
-    Uses brute force for 'Are you or a first-degree family member involved in combat?'
-    to ensure correct legend terms.
+    Creates a horizontal bar chart where:
+    - 'כן' is displayed as 'Involved in combat (self or first-degree family member)'
+    - 'לא' is displayed as 'Not involved in combat (self or first-degree family member)'
     """
 
-    # Color mapping with at least the keys we need
+    # ✅ Define correct color mapping
     color_mapping = {
-        'Family of Combatants': '#654321',
-        'Not Family of Combatants': '#333333',
-
-        'Female': '#8B0000',
-        'Male': '#00008B',
-
-        'Living in North/Gaza Envelope': '#006400',
-        'Not Living in North/Gaza Envelope': '#4B0082',
-
-        # Fallback
-        'Unknown': '#999999'
+        "Involved in combat (self or first-degree family member)": '#654321',  # Dark brown
+        "Not involved in combat (self or first-degree family member)": '#333333',  # Dark gray
+        "Female": "#8B0000",  # Dark red
+        "Male": "#00008B",  # Dark blue
+        "Living in North/Gaza Envelope": "#006400",  # Dark green
+        "Not Living in North/Gaza Envelope": "#4B0082",  # Dark purple
+        "Unknown": "#999999"  # Fallback color
     }
 
     # Identify numeric columns (a1, a2, etc.)
-    numeric_cols = [col for col in question_data.columns if col.startswith('a')]
+    numeric_cols = [col for col in question_data.columns if col.startswith("a")]
     numeric_cols.sort()
 
-    # Group data by 'sub_subject' and average the response columns
+    # Group data by 'sub_subject' and calculate the mean
     chart_data = (
-        question_data.groupby('sub_subject', as_index=False)[numeric_cols]
+        question_data.groupby("sub_subject", as_index=False)[numeric_cols]
         .mean()
     )
 
@@ -616,43 +593,38 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
     if full_question in response_mappings:
         categories = [response_mappings[full_question].get(col, col) for col in numeric_cols]
     else:
-        categories = [f'Response {i}' for i in range(1, len(numeric_cols) + 1)]
+        categories = [f"Response {i}" for i in range(1, len(numeric_cols) + 1)]
 
     # Reverse categories if not about solidarity (example logic)
     if "solidarity" not in selected_question.lower():
         categories = list(reversed(categories))
         numeric_cols = list(reversed(numeric_cols))
 
-    # Brute force: specifically handle "Are you or a first-degree family member involved in combat?"
-    # Otherwise do simple fallback logic or you can extend brute force for other questions similarly.
+    # ✅ Brute-force correct legend labels BEFORE assigning colors
     for _, row in chart_data.iterrows():
-        sub_subject = row['sub_subject']
+        sub_subject = row["sub_subject"]
 
         if selected_question == "Are you or a first-degree family member involved in combat?":
-            # Force 'כן' => "Family of Combatants", 'לא' => "Not Family of Combatants"
-            if sub_subject == 'כן':
-                legend_name = "Family of Combatants"
+            if sub_subject.strip() == "כן":
+                legend_name = "Involved in combat (self or first-degree family member)"
+            elif sub_subject.strip() == "לא":
+                legend_name = "Not involved in combat (self or first-degree family member)"
             else:
-                legend_name = "Not Family of Combatants"
-
+                legend_name = "Unknown"
         else:
-            # Fallback approach for other demographic questions
-            # You can similarly brute-force if you want, or check the sub_subject
-            # For example, if it's "זכר", "נקבה", etc.
-            if sub_subject in ('זכר', 'Male'):
+            if sub_subject.strip() == "זכר":
                 legend_name = "Male"
-            elif sub_subject in ('נקבה', 'Female'):
+            elif sub_subject.strip() == "נקבה":
                 legend_name = "Female"
-            elif sub_subject == 'כן':
-                # Possibly it's the border question
+            elif sub_subject.strip() == "כן":
                 legend_name = "Living in North/Gaza Envelope"
-            elif sub_subject == 'לא':
+            elif sub_subject.strip() == "לא":
                 legend_name = "Not Living in North/Gaza Envelope"
             else:
-                legend_name = "Unknown"  # fallback if none match
+                legend_name = "Unknown"  # Fallback for unmapped values
 
-        # Determine color
-        bar_color = color_mapping.get(legend_name, color_mapping['Unknown'])
+        # ✅ Now, fetch the correct color AFTER assigning correct legend name
+        bar_color = color_mapping.get(legend_name, color_mapping["Unknown"])
 
         values = [row[col] * 100 for col in numeric_cols]
         text_values = [f"{v:.1f}%" for v in values]
@@ -662,10 +634,10 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
             x=values,
             y=categories,
             text=text_values,
-            textposition='outside',
+            textposition="outside",
             textfont=dict(size=14),
-            orientation='h',
-            marker_color=bar_color,
+            orientation="h",
+            marker_color=bar_color,  # ✅ Color now correctly maps
             hovertemplate="<b>%{y}</b><br>" +
                           f"{legend_name}: " + "%{x:.1f}%" +
                           "<extra></extra>"
@@ -676,29 +648,29 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
 
     fig.update_layout(
         title={
-            'text': title_text,
-            'y': 0.95,
-            'x': 0.5,
-            'xanchor': 'center',
-            'yanchor': 'top',
-            'font': {'size': 24}
+            "text": title_text,
+            "y": 0.95,
+            "x": 0.5,
+            "xanchor": "center",
+            "yanchor": "top",
+            "font": {"size": 24}
         },
-        barmode='group',
+        barmode="group",
         height=700,
         width=1200,
         showlegend=True,
         legend={
-            'orientation': 'h',
-            'yanchor': 'bottom',
-            'y': -0.2,
-            'xanchor': 'center',
-            'x': 0.5
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": -0.2,
+            "xanchor": "center",
+            "x": 0.5
         },
         font=dict(size=16),
         margin=dict(t=80, b=200, l=100, r=200),
-        paper_bgcolor='white',
-        plot_bgcolor='rgba(248,249,250,0.5)',
-        yaxis={'autorange': 'reversed'},
+        paper_bgcolor="white",
+        plot_bgcolor="rgba(248,249,250,0.5)",
+        yaxis={"autorange": "reversed"},
         xaxis=dict(
             range=[-5, 62],
             showgrid=True,
@@ -714,6 +686,8 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
     )
 
     st.plotly_chart(fig, use_container_width=True, key="bar_chart")
+
+
 
 
 def create_line_plot(question_data, full_question, selected_question, response_mappings):
@@ -740,8 +714,8 @@ def create_line_plot(question_data, full_question, selected_question, response_m
 
     # Minimal color mapping
     color_mapping = {
-        'Family of Combatants': '#654321',
-        'Not Family of Combatants': '#333333',
+        "Involved in combat (self or first-degree family member)": '#654321',
+        "Not involved in combat (self or first-degree family member)": '#333333',
 
         'Female': '#8B0000',
         'Male': '#00008B',
@@ -767,9 +741,9 @@ def create_line_plot(question_data, full_question, selected_question, response_m
             # Brute force only for the combat question
             if selected_question == "Are you or a first-degree family member involved in combat?":
                 if sub_subject == 'כן':
-                    legend_name = "Family of Combatants"
+                    legend_name = "Involved in combat (self or first-degree family member)"
                 else:
-                    legend_name = "Not Family of Combatants"
+                    legend_name = "Not involved in combat (self or first-degree family member)"
             else:
                 # Fallback for other questions
                 if sub_subject in ('זכר', 'Male'):
@@ -1106,29 +1080,48 @@ elif visualization == "Dashboard Overview":
 if visualization == "Public Trust In Institutions And Public Figures":
     st.header("Public Trust In Institutions And Public Figures")
 
-    # col7, col8 = st.columns([1, 2])
+    # ROW 1: text on the left, bar chart on the right
+    row1_left, row1_right = st.columns([1, 2])
 
-    # with col7:
-    public_trust_text()
-        # demo_choice = st.radio("Choose a demographic dimension:",
-        #                        ["District", "Religiousness", "Political stance", "Age"])  # Move radio buttons here
+    with row1_left:
+        # Display instructions at the top
+        public_trust_text()
 
-    # with col8:
-        # Usage example:
-    create_trust_dashboard(
-        bibi_data_path="data_storage/bibi.xlsx",
-        tzal_data_path="data_storage/tzal.xlsx",
-        mishtara_data_path="data_storage/mishtra.xlsx",
-        memshala_data_path="data_storage/memshla.xlsx"
-    )
+    with row1_right:
+        # Show the bar chart, capture the user's click
+        selected_point, data, institutions = create_trust_dashboard(
+            bibi_data_path="data_storage/bibi.xlsx",
+            tzal_data_path="data_storage/tzal.xlsx",
+            mishtara_data_path="data_storage/mishtra.xlsx",
+            memshala_data_path="data_storage/memshla.xlsx"
+        )
 
-    # # Usage example:
-    # create_trust_dashboard(
-    #     bibi_data_path="data_storage/bibi.xlsx",
-    #     tzal_data_path="data_storage/tzal.xlsx",
-    #     mishtara_data_path="data_storage/mishtra.xlsx",
-    #     memshala_data_path="data_storage/memshla.xlsx"
-    # )
+    # If user clicked on a bar, create a new horizontal row below
+    if selected_point:
+        # Optional: A horizontal rule for visual separation
+        st.markdown("---")
+
+        # ROW 2: radio on the left, line plot on the right
+        row2_left, row2_right = st.columns([1, 2])
+
+        with row2_left:
+            # The radio button is now in the second row, left column
+            selected_demo = st.radio(
+                "Choose a demographic dimension:",
+                ["All", "District", "Religiousness", "Political stance", "Age"],
+                index=0
+            )
+
+        with row2_right:
+            # Render the time‐series line plot side by side with the radio
+            clicked_institution = selected_point[0]["x"]
+            selected_inst_key = next(
+                (k for k, val in institutions.items() if val == clicked_institution),
+                None
+            )
+            create_demographic_time_series(selected_inst_key, selected_demo, data, institutions)
+
+
 
 
 elif visualization == "Israel’s Social Outlook":
