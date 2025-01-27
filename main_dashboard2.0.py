@@ -137,7 +137,8 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
             title="Trust Scores by Institution (overall average : 2.36)",
             xaxis=dict(title="Institution"),
             yaxis=dict(title="Trust Score", range=[0, 4]),  # Assuming scores range 1-4
-            showlegend=False  # No need for a separate legend, colors represent institutions
+            showlegend=False,  # No need for a separate legend, colors represent institutions
+            bargap = 0.5  # Increase space between bars to make them thinner
         )
 
         return fig
