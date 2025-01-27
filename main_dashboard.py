@@ -166,7 +166,7 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
                 "Secular": {"hebrew": "חילוני", "color": "rgb(135, 206, 250)"}
             },
             "Political stance": {
-                "Right": "ימין",
+                "Right":  "ימין",
                 "Center": "מרכז",
                 "Left": "שמאל",
                 "Refuses to Answer": "מסרב"
@@ -181,7 +181,7 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
                 "18-24": {"hebrew": "18-24", "color": "rgb(255, 192, 203)"}
             }
         }
-        col11, col22 = st.columns([0.3, 0.7])
+        col11, col22 = st.columns([0.2, 0.8])
         with col11:
             demo_choice = st.radio("Choose a demographic dimension:", list(demo_mapping.keys()))
 
@@ -191,7 +191,8 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
             if demo_choice in ["Religiousness", "Age", "District"]:
                 selected_map = demo_mapping[demo_choice]
                 for eng_label, value in selected_map.items():
-                    sub_data = trust_scores[trust_scores["sub_subject"] == value["hebrew"]].copy()
+                    # sub_data = trust_scores[trust_scores["sub_subject"] == value["hebrew"]].copy()
+                    sub_data = trust_scores[trust_scores["sub_subject"] == value["hebrew"]]
 
                     if not sub_data.empty:
                         monthly_avg = sub_data.groupby("month_year")["trust_score"].mean().reset_index()
@@ -1063,21 +1064,21 @@ elif visualization == "Dashboard Overview":
 if visualization == "Public Trust In Institutions And Public Figures":
     st.header("Public Trust In Institutions And Public Figures")
 
-    col7, col8 = st.columns([1, 2])
+    # col7, col8 = st.columns([1, 2])
 
-    with col7:
-        public_trust_text()
+    # with col7:
+    public_trust_text()
         # demo_choice = st.radio("Choose a demographic dimension:",
         #                        ["District", "Religiousness", "Political stance", "Age"])  # Move radio buttons here
 
-    with col8:
+    # with col8:
         # Usage example:
-        create_trust_dashboard(
-            bibi_data_path="data_storage/bibi.xlsx",
-            tzal_data_path="data_storage/tzal.xlsx",
-            mishtara_data_path="data_storage/mishtra.xlsx",
-            memshala_data_path="data_storage/memshla.xlsx"
-        )
+    create_trust_dashboard(
+        bibi_data_path="data_storage/bibi.xlsx",
+        tzal_data_path="data_storage/tzal.xlsx",
+        mishtara_data_path="data_storage/mishtra.xlsx",
+        memshala_data_path="data_storage/memshla.xlsx"
+    )
 
     # # Usage example:
     # create_trust_dashboard(
