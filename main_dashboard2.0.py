@@ -97,7 +97,7 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
 
     def plot_scatter_chart():
         scatter_data = []
-        fixed_size = 60
+
 
         for inst, name in institutions.items():
             if f"{inst}_scores" not in data:
@@ -109,38 +109,38 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
             scatter_data.append({
                 "Institution": name,
                 "Trust Score": avg_trust,
-                "Key": inst,
-                "Size": fixed_size
-
+                "Key": inst
             })
 
         scatter_df = pd.DataFrame(scatter_data)
-
+        scatter_df = scatter_df.sort_values(by="Trust Score", ascending=True)
         fig = go.Figure()
-        for _, row in scatter_df.iterrows():
-            fig.add_trace(go.Scatter(
-                x=[row["Institution"]],
-                y=[0],
-                mode="markers+text",
-                marker=dict(
-                    size=row['Trust Score']*30,
-                    color=color_map[row["Key"]],
-                    line=dict(width=2, color="white")
-                ),
-                text=f"{row['Trust Score']:.2f}",  # Only show trust score
-                textposition="middle center",  # Center the text in the bubble
-                hoverinfo="none" , # Remove hover information
-                name = row["Institution"]
-            ))
+
+        fig.add_trace(go.Bar(
+            x=scatter_df["Institution"],
+            y=scatter_df["Trust Score"],
+            marker=dict(
+                color="gray",  # Keep original colors
+                line=dict(width=2, color="white")  # Keep the white border for readability
+            ),
+            text=[f"{val:.2f}" for val in scatter_df["Trust Score"]],
+            textposition="outside",  # Show text outside the bar
+            name="Trust Scores by Institution",
+            hovertemplate=(
+                    "<b>Institution</b>: %{x}<br>" +  # Show Institution name
+                    "<b>Trust Score</b>: %{y:.2f}<br>" +  # Show Trust Score
+                    "<extra></extra>"  # Remove extra hover info
+            )
+        ))
 
         fig.update_layout(
-            title="Trust Scores by Institution(Average of all : 2.36) ",
-            xaxis=dict(visible=False),
-            yaxis=dict(visible=False),
-            showlegend=True
+            title="Trust Scores by Institution (overall average : 2.36)",
+            xaxis=dict(title="Institution"),
+            yaxis=dict(title="Trust Score", range=[0, 4]),  # Assuming scores range 1-4
+            showlegend=False  # No need for a separate legend, colors represent institutions
         )
-        return fig
 
+        return fig
     def create_demographic_time_series(selected_inst_key):
         trust_scores = data.get(f"{selected_inst_key}_rows", pd.DataFrame())
 
@@ -222,7 +222,6 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
                         ))
 
             fig.update_layout(
-                title=f"Trust Scores for {institution_name} Over Time by {demo_choice}",
                 xaxis_title="Month",
                 yaxis_title="Trust Score",
                 yaxis_range=[1, 4],
@@ -235,8 +234,19 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
                     x=0.5,
                     bgcolor="rgba(255, 255, 255, 0.8)"
                 ),
-                margin=dict(b=100)
+                margin=dict(b=100),
+                annotations=[
+                    dict(
+                        xref="paper", yref="paper",
+                        x=0.5, y=1.15,  # Positioning above the plot
+                        text=f"Trust Scores for {institution_name} by {demo_choice} Over Time",
+                        showarrow=False,
+                        font=dict(size=16, family="Arial", color="black"),
+                        xanchor="center"
+                    )
+                ]
             )
+
 
             st.plotly_chart(fig, use_container_width=True)
 
