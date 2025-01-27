@@ -110,6 +110,7 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
                 "Trust Score": avg_trust,
                 "Key": inst,
                 "Size": fixed_size
+
             })
 
         scatter_df = pd.DataFrame(scatter_data)
@@ -118,23 +119,24 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
         for _, row in scatter_df.iterrows():
             fig.add_trace(go.Scatter(
                 x=[row["Institution"]],
-                y=[row["Trust Score"]],
+                y=[0],
                 mode="markers+text",
                 marker=dict(
-                    size=fixed_size,
+                    size=row['Trust Score']*30,
                     color=color_map[row["Key"]],
                     line=dict(width=2, color="white")
                 ),
                 text=f"{row['Trust Score']:.2f}",  # Only show trust score
                 textposition="middle center",  # Center the text in the bubble
-                hoverinfo="none"  # Remove hover information
+                hoverinfo="none" , # Remove hover information
+                name = row["Institution"]
             ))
 
         fig.update_layout(
             title="Trust Scores by Institution",
-            yaxis=dict(title="Trust Score (1-4)", range=[1, 4]),
-            xaxis=dict(title="Institution"),
-            showlegend=False
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False),
+            showlegend=True
         )
         return fig
 
