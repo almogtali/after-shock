@@ -314,24 +314,7 @@ def rocket_strikes_map():
     # Load data
     gdf, data, alarms = load_data(surveyCSV, alarmsCSV, countiesSHP)
 
-    # # Generate a list of discrete months for the slider
-    # start_date = pd.Timestamp(2023, 10, 1).date()
-    # end_date = pd.Timestamp(2024, 11, 30).date()
-    # months = pd.date_range(start=start_date, end=end_date, freq='MS').to_period('M')
 
-    # Sidebar: Time Period Selection using discrete months
-    # st.write("Select Time Period")
-    # selected_range = st.select_slider(
-    #     key="slider1",
-    #     label="Select Period",
-    #     options=list(months),
-    #     value=(months[0], months[-1])  # Default to full range
-    # )
-    #
-    # # Checkbox for showing alarms
-    # # show_alarms = st.sidebar.checkbox(label="Show Alarms", value=True)
-    # show_alarms = st.checkbox(label="Show Alarms", value=True)
-    # Filter data based on the selected range
     filtered_data = data[
         (data['Year-Month'] >= selected_range[0]) &
         (data['Year-Month'] <= selected_range[1])

@@ -166,10 +166,10 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
                 "Secular": {"hebrew": "חילוני", "color": "rgb(135, 206, 250)"}
             },
             "Political stance": {
-                "Right":  "ימין",
-                "Center": "מרכז",
-                "Left": "שמאל",
-                "Refuses to Answer": "מסרב"
+                "Right": {"hebrew": "ימין", "color": "rgb(255, 0, 0)"},
+                "Center": {"hebrew": "מרכז", "color": "rgb(0, 255, 0)"},
+                "Left": {"hebrew": "שמאל", "color": "rgb(0, 0, 255)"},
+                "Refuses to Answer": {"hebrew": "מסרב", "color": "rgb(128, 128, 128)"}
             },
             "Age": {
                 "75+": {"hebrew": "75+", "color": "rgb(139, 0, 0)"},
@@ -181,6 +181,7 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
                 "18-24": {"hebrew": "18-24", "color": "rgb(255, 192, 203)"}
             }
         }
+
         col11, col22 = st.columns([0.2, 0.8])
         with col11:
             demo_choice = st.radio("Choose a demographic dimension:", list(demo_mapping.keys()))
@@ -191,13 +192,10 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
             if demo_choice in ["Religiousness", "Age", "District"]:
                 selected_map = demo_mapping[demo_choice]
                 for eng_label, value in selected_map.items():
-                    # sub_data = trust_scores[trust_scores["sub_subject"] == value["hebrew"]].copy()
                     sub_data = trust_scores[trust_scores["sub_subject"] == value["hebrew"]]
-
                     if not sub_data.empty:
                         monthly_avg = sub_data.groupby("month_year")["trust_score"].mean().reset_index()
                         monthly_avg["month_year_str"] = monthly_avg["month_year"].astype(str)
-
                         fig.add_trace(go.Scatter(
                             x=monthly_avg["month_year_str"],
                             y=monthly_avg["trust_score"],
@@ -208,22 +206,20 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
                             marker=dict(size=8, color=value["color"])
                         ))
             else:
-                selected_map = {k: v for k, v in demo_mapping[demo_choice].items()}
-                for eng_label, hebrew_label in selected_map.items():
-                    sub_data = trust_scores[trust_scores["sub_subject"] == hebrew_label].copy()
-
+                selected_map = demo_mapping[demo_choice]
+                for eng_label, value in selected_map.items():
+                    sub_data = trust_scores[trust_scores["sub_subject"] == value["hebrew"]]
                     if not sub_data.empty:
                         monthly_avg = sub_data.groupby("month_year")["trust_score"].mean().reset_index()
                         monthly_avg["month_year_str"] = monthly_avg["month_year"].astype(str)
-
                         fig.add_trace(go.Scatter(
                             x=monthly_avg["month_year_str"],
                             y=monthly_avg["trust_score"],
                             name=eng_label,
                             mode="lines+markers",
                             connectgaps=True,
-                            line=dict(width=2),
-                            marker=dict(size=8)
+                            line=dict(width=2, color=value["color"]),
+                            marker=dict(size=8, color=value["color"])
                         ))
 
             fig.update_layout(
@@ -233,18 +229,17 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
                 yaxis_range=[1, 4],
                 hovermode="x unified",
                 legend=dict(
-                    orientation="h",  # Horizontal legend
-                    yanchor="top",  # Anchoring to the top of the legend box
-                    y=-0.2,  # Moving the legend below the plot
+                    orientation="h",
+                    yanchor="top",
+                    y=-0.2,
                     xanchor="center",
                     x=0.5,
                     bgcolor="rgba(255, 255, 255, 0.8)"
                 ),
-                margin=dict(b=100)  # Adding space at the bottom for the legend
+                margin=dict(b=100)
             )
 
             st.plotly_chart(fig, use_container_width=True)
-
         # st.plotly_chart(fig, use_container_width=True)
 
     # ---- MAIN DASHBOARD LAYOUT ----
@@ -319,24 +314,7 @@ def rocket_strikes_map():
     # Load data
     gdf, data, alarms = load_data(surveyCSV, alarmsCSV, countiesSHP)
 
-    # # Generate a list of discrete months for the slider
-    # start_date = pd.Timestamp(2023, 10, 1).date()
-    # end_date = pd.Timestamp(2024, 11, 30).date()
-    # months = pd.date_range(start=start_date, end=end_date, freq='MS').to_period('M')
 
-    # Sidebar: Time Period Selection using discrete months
-    # st.write("Select Time Period")
-    # selected_range = st.select_slider(
-    #     key="slider1",
-    #     label="Select Period",
-    #     options=list(months),
-    #     value=(months[0], months[-1])  # Default to full range
-    # )
-    #
-    # # Checkbox for showing alarms
-    # # show_alarms = st.sidebar.checkbox(label="Show Alarms", value=True)
-    # show_alarms = st.checkbox(label="Show Alarms", value=True)
-    # Filter data based on the selected range
     filtered_data = data[
         (data['Year-Month'] >= selected_range[0]) &
         (data['Year-Month'] <= selected_range[1])
