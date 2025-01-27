@@ -1,3 +1,4 @@
+import numpy as np
 from streamlit_plotly_events import plotly_events
 import geopandas as gpd
 import json
@@ -133,7 +134,7 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
             ))
 
         fig.update_layout(
-            title="Trust Scores by Institution",
+            title="Trust Scores by Institution(Average of all : 2.36) ",
             xaxis=dict(visible=False),
             yaxis=dict(visible=False),
             showlegend=True
@@ -184,29 +185,27 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
 
         col11, col22 = st.columns([0.2, 0.8])
         with col11:
-            demo_choice = st.radio("Choose a demographic dimension:", list(demo_mapping.keys()))
+            demo_choice = st.radio("Choose a demographic dimension:", ["All"] + list(demo_mapping.keys()), index=0)
 
         with col22:
             fig = go.Figure()
 
-            if demo_choice in ["Religiousness", "Age", "District"]:
-                selected_map = demo_mapping[demo_choice]
-                for eng_label, value in selected_map.items():
-                    sub_data = trust_scores[trust_scores["sub_subject"] == value["hebrew"]]
-                    if not sub_data.empty:
-                        monthly_avg = sub_data.groupby("month_year")["trust_score"].mean().reset_index()
-                        monthly_avg["month_year_str"] = monthly_avg["month_year"].astype(str)
-                        fig.add_trace(go.Scatter(
-                            x=monthly_avg["month_year_str"],
-                            y=monthly_avg["trust_score"],
-                            name=eng_label,
-                            mode="lines+markers",
-                            connectgaps=True,
-                            line=dict(width=2, color=value["color"]),
-                            marker=dict(size=8, color=value["color"])
-                        ))
+            if demo_choice == "All":
+                # Compute overall average trust for this institution (across all segments)
+                avg_trust = trust_scores.groupby("month_year")["trust_score"].mean().reset_index()
+                avg_trust["month_year_str"] = avg_trust["month_year"].astype(str)
+
+                fig.add_trace(go.Scatter(
+                    x=avg_trust["month_year_str"],
+                    y=avg_trust["trust_score"],
+                    name="Overall Average Trust",
+                    mode="lines+markers",
+                    line=dict(width=2, color="black"),
+                    marker=dict(size=8, color="black")
+                ))
             else:
-                selected_map = demo_mapping[demo_choice]
+                selected_map = demo_mapping.get(demo_choice, {})
+
                 for eng_label, value in selected_map.items():
                     sub_data = trust_scores[trust_scores["sub_subject"] == value["hebrew"]]
                     if not sub_data.empty:
@@ -240,6 +239,7 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
             )
 
             st.plotly_chart(fig, use_container_width=True)
+
         # st.plotly_chart(fig, use_container_width=True)
 
     # ---- MAIN DASHBOARD LAYOUT ----
