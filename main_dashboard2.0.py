@@ -7,8 +7,6 @@ import pandas as pd
 import plotly.graph_objects as go
 
 
-
-
 def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, memshala_data_path):
     """
     Creates a complete trust dashboard component for Streamlit.
@@ -75,10 +73,12 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
         for df in [bibi_monthly, tzal_monthly, mish_monthly, memshala_monthly]:
             df['month_year_str'] = df['month_year'].astype(str)
 
-        all_months = sorted(set(bibi_monthly['month_year_str'])
-                            .union(tzal_monthly['month_year_str'])
-                            .union(mish_monthly['month_year_str'])
-                            .union(memshala_monthly['month_year_str']))
+        all_months = sorted(
+            set(bibi_monthly['month_year_str'])
+            .union(tzal_monthly['month_year_str'])
+            .union(mish_monthly['month_year_str'])
+            .union(memshala_monthly['month_year_str'])
+        )
 
         def df_to_dict(df):
             return dict(zip(df['month_year_str'], df['trust_score']))
@@ -96,15 +96,19 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
         }
 
     def plot_scatter_chart():
+        """Create the bar chart of average trust scores by institution."""
         scatter_data = []
-
-
         for inst, name in institutions.items():
+            # Skip if that dict key doesn't exist
             if f"{inst}_scores" not in data:
                 continue
 
-            avg_trust = sum(data[f"{inst}_scores"].values()) / len(data[f"{inst}_scores"]) if data[
-                f"{inst}_scores"] else 0
+            # Average across all months for each institution
+            scores_dict = data[f"{inst}_scores"]
+            if scores_dict:
+                avg_trust = sum(scores_dict.values()) / len(scores_dict)
+            else:
+                avg_trust = 0
 
             scatter_data.append({
                 "Institution": name,
@@ -112,42 +116,33 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
                 "Key": inst
             })
 
-        scatter_df = pd.DataFrame(scatter_data)
-        scatter_df = scatter_df.sort_values(by="Trust Score", ascending=True)
+        scatter_df = pd.DataFrame(scatter_data).sort_values(by="Trust Score", ascending=True)
         fig = go.Figure()
 
         fig.add_trace(go.Bar(
             x=scatter_df["Institution"],
             y=scatter_df["Trust Score"],
-            marker=dict(
-                color="gray",  # Keep original colors
-                line=dict(width=2, color="white")  # Keep the white border for readability
-            ),
+            marker=dict(color="gray", line=dict(width=2, color="white")),
             text=[f"{val:.2f}" for val in scatter_df["Trust Score"]],
-            textposition="outside",  # Show text outside the bar
-            name="Trust Scores by Institution",
-            hovertemplate=(
-                    "<b>Institution</b>: %{x}<br>" +  # Show Institution name
-                    "<b>Trust Score</b>: %{y:.2f}<br>" +  # Show Trust Score
-                    "<extra></extra>"  # Remove extra hover info
-            )
+            textposition="outside",
+            hovertemplate="<b>Institution</b>: %{x}<br><b>Trust Score</b>: %{y:.2f}<extra></extra>"
         ))
 
         fig.update_layout(
             title="Trust Scores by Institution (overall average : 2.36)",
             xaxis=dict(title="Institution"),
-            yaxis=dict(title="Trust Score", range=[0, 4]),  # Assuming scores range 1-4
-            showlegend=False,  # No need for a separate legend, colors represent institutions
-            bargap = 0.5  # Increase space between bars to make them thinner
+            yaxis=dict(title="Trust Score", range=[0, 4]),
+            showlegend=False,
+            bargap=0.5
         )
-
         return fig
-    def create_demographic_time_series(selected_inst_key):
-        trust_scores = data.get(f"{selected_inst_key}_rows", pd.DataFrame())
 
+    def create_demographic_time_series(selected_inst_key):
+        """Create and display the time-series chart by demographic dimension."""
+        trust_scores = data.get(f"{selected_inst_key}_rows", pd.DataFrame())
         if trust_scores.empty:
             st.warning(f"No data available for {selected_inst_key}")
-            return None
+            return
 
         institution_name = institutions.get(selected_inst_key, "Unknown Institution")
 
@@ -184,15 +179,15 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
             }
         }
 
-        col11, col22 = st.columns([0.2, 0.8])
-        with col11:
+        # We create two columns: one for the radio button on the left, one for the chart on the right
+        col_left, col_right = st.columns([0.2, 0.8])
+        with col_left:
             demo_choice = st.radio("Choose a demographic dimension:", ["All"] + list(demo_mapping.keys()), index=0)
 
-        with col22:
+        with col_right:
             fig = go.Figure()
-
             if demo_choice == "All":
-                # Compute overall average trust for this institution (across all segments)
+                # Overall average trust for this institution
                 avg_trust = trust_scores.groupby("month_year")["trust_score"].mean().reset_index()
                 avg_trust["month_year_str"] = avg_trust["month_year"].astype(str)
 
@@ -205,8 +200,7 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
                     marker=dict(size=8, color="black")
                 ))
             else:
-                selected_map = demo_mapping.get(demo_choice, {})
-
+                selected_map = demo_mapping[demo_choice]
                 for eng_label, value in selected_map.items():
                     sub_data = trust_scores[trust_scores["sub_subject"] == value["hebrew"]]
                     if not sub_data.empty:
@@ -239,7 +233,7 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
                 annotations=[
                     dict(
                         xref="paper", yref="paper",
-                        x=0.5, y=1.15,  # Positioning above the plot
+                        x=0.5, y=1.15,
                         text=f"Trust Scores for {institution_name} by {demo_choice} Over Time",
                         showarrow=False,
                         font=dict(size=16, family="Arial", color="black"),
@@ -247,8 +241,6 @@ def create_trust_dashboard(bibi_data_path, tzal_data_path, mishtara_data_path, m
                     )
                 ]
             )
-
-
             st.plotly_chart(fig, use_container_width=True)
 
         # st.plotly_chart(fig, use_container_width=True)
@@ -1109,21 +1101,21 @@ elif visualization == "Dashboard Overview":
 if visualization == "Public Trust In Institutions And Public Figures":
     st.header("Public Trust In Institutions And Public Figures")
 
-    # col7, col8 = st.columns([1, 2])
+    col7, col8 = st.columns([1, 2])
 
-    # with col7:
-    public_trust_text()
+    with col7:
+        public_trust_text()
         # demo_choice = st.radio("Choose a demographic dimension:",
         #                        ["District", "Religiousness", "Political stance", "Age"])  # Move radio buttons here
 
-    # with col8:
+    with col8:
         # Usage example:
-    create_trust_dashboard(
-        bibi_data_path="data_storage/bibi.xlsx",
-        tzal_data_path="data_storage/tzal.xlsx",
-        mishtara_data_path="data_storage/mishtra.xlsx",
-        memshala_data_path="data_storage/memshla.xlsx"
-    )
+        create_trust_dashboard(
+            bibi_data_path="data_storage/bibi.xlsx",
+            tzal_data_path="data_storage/tzal.xlsx",
+            mishtara_data_path="data_storage/mishtra.xlsx",
+            memshala_data_path="data_storage/memshla.xlsx"
+        )
 
     # # Usage example:
     # create_trust_dashboard(
