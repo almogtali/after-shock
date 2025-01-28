@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import numpy as np
 from streamlit_plotly_events import plotly_events
 import geopandas as gpd
@@ -414,13 +416,10 @@ def rocket_strikes_map():
 
     else:
         st.warning("No data available for the selected time range. Please select a wider period.")
-import streamlit as st
-import pandas as pd
-import plotly.graph_objs as go
-import streamlit as st
-import pandas as pd
-import plotly.graph_objs as go
 
+import streamlit as st
+import pandas as pd
+import plotly.graph_objs as go
 def create_solidarity_dashboard():
     """
     This function creates the Solidarity Dashboard with an English user interface.
@@ -474,7 +473,7 @@ def create_solidarity_dashboard():
     predefined_questions = list(question_mapping.keys())
 
     # --------------------------------------------------------------------------
-    # 5. Here is the NEW PART: concise statements to replace the question text
+    # 5. Concise statements to replace the question text
     # --------------------------------------------------------------------------
     concise_statements = {
         "Are you or a first-degree family member involved in combat?":
@@ -487,16 +486,12 @@ def create_solidarity_dashboard():
     # We'll build a reverse lookup to recover the original question from its short statement
     statement_to_question = {v: k for k, v in concise_statements.items()}
 
-    # --------------------------------------------------------------------------
     # 6. Streamlit UI
-    # --------------------------------------------------------------------------
-    # File selection dropdown
     selected_file = st.selectbox(
         "Select Subject to Display:",
         list(file_options.keys())
     )
 
-    # Two columns for layout
     col1, col2 = st.columns([0.8, 2.2])
 
     with col1:
@@ -505,7 +500,6 @@ def create_solidarity_dashboard():
             ["Aggregated results", "Results over time"]
         )
 
-    # Instead of displaying the original question, we display the concise statement
     with col2:
         selected_statement = st.selectbox(
             "Select segmentation to display:",
@@ -515,9 +509,7 @@ def create_solidarity_dashboard():
     # Convert the selected statement back to the original question key
     selected_question = statement_to_question.get(selected_statement, selected_statement)
 
-    # --------------------------------------------------------------------------
     # 7. Find the Hebrew question string
-    # --------------------------------------------------------------------------
     hebrew_question = question_mapping.get(selected_question)
 
     # 8. Load the data
@@ -543,7 +535,8 @@ def create_solidarity_dashboard():
 
     # 10. Choose which visualization to draw
     if viz_type == "Aggregated results":
-        create_bar_chart(question_data, full_question, selected_question, response_mappings)
+        create_bar_chart(question_data, full_question, selected_question, response_mappings, QUESTION_SHORT_FORMS)
+
     else:
         create_line_plot(question_data, full_question, selected_question, response_mappings)
 
@@ -559,20 +552,21 @@ QUESTION_SHORT_FORMS = {
     "Has there been a change in the sense of solidarity in Israeli society at this time?": "Solidarity change"
 }
 
-def create_bar_chart(question_data, full_question, selected_question, response_mappings):
+
+def create_bar_chart(question_data, full_question, selected_question, response_mappings, QUESTION_SHORT_FORMS):
     """
     Creates a horizontal bar chart where:
     - 'כן' is displayed as 'Involved in combat (self or first-degree family member)'
     - 'לא' is displayed as 'Not involved in combat (self or first-degree family member)'
     """
 
-    # ✅ Define correct color mapping
+    # Define correct color mapping
     color_mapping = {
         "Involved in combat (self or first-degree family member)": '#654321',  # Dark brown
         "Not involved in combat (self or first-degree family member)": '#333333',  # Dark gray
         "Female": "#8B0000",  # Dark red
-        "Male": "#00008B",  # Dark blue
-        "Living in North/Gaza Envelope": "#006400",  # Dark green
+        "Male": "#00008B",    # Dark blue
+        "Living in North/Gaza Envelope": "#006400",   # Dark green
         "Not Living in North/Gaza Envelope": "#4B0082",  # Dark purple
         "Unknown": "#999999"  # Fallback color
     }
@@ -581,7 +575,7 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
     numeric_cols = [col for col in question_data.columns if col.startswith("a")]
     numeric_cols.sort()
 
-    # Group data by 'sub_subject' and calculate the mean
+    # Group data by 'sub_subject' and compute mean
     chart_data = (
         question_data.groupby("sub_subject", as_index=False)[numeric_cols]
         .mean()
@@ -595,12 +589,23 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
     else:
         categories = [f"Response {i}" for i in range(1, len(numeric_cols) + 1)]
 
-    # Reverse categories if not about solidarity (example logic)
-    if "solidarity" not in selected_question.lower():
-        categories = list(reversed(categories))
-        numeric_cols = list(reversed(numeric_cols))
+    # Define mapping for different question types to determine title prefix
+    question_prefix_mapping = {
+        "Has there been a change in the sense of solidarity in Israeli society at this time?": "Change in solidarity",
+        "What is your social situation?": "Social situation",
+        "How optimistic are you about Israeli society's ability to recover from the crisis and grow?": "Optimism",
+    }
 
-    # ✅ Brute-force correct legend labels BEFORE assigning colors
+    # Get short question form
+    short_question = QUESTION_SHORT_FORMS.get(selected_question, selected_question)
+
+    # Determine the correct title prefix based on the selected question
+    title_prefix = question_prefix_mapping.get(selected_question, short_question)  # Fallback to short_question if not mapped
+
+    # Construct the final title dynamically
+    title_text = f"{title_prefix} by {short_question}, aggregated"
+
+    # Map sub_subject => English legend labels
     for _, row in chart_data.iterrows():
         sub_subject = row["sub_subject"]
 
@@ -621,11 +626,11 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
             elif sub_subject.strip() == "לא":
                 legend_name = "Not Living in North/Gaza Envelope"
             else:
-                legend_name = "Unknown"  # Fallback for unmapped values
+                legend_name = "Unknown"
 
-        # ✅ Now, fetch the correct color AFTER assigning correct legend name
         bar_color = color_mapping.get(legend_name, color_mapping["Unknown"])
 
+        # Multiply by 100 to display percentages
         values = [row[col] * 100 for col in numeric_cols]
         text_values = [f"{v:.1f}%" for v in values]
 
@@ -637,14 +642,11 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
             textposition="outside",
             textfont=dict(size=14),
             orientation="h",
-            marker_color=bar_color,  # ✅ Color now correctly maps
+            marker_color=bar_color,
             hovertemplate="<b>%{y}</b><br>" +
                           f"{legend_name}: " + "%{x:.1f}%" +
                           "<extra></extra>"
         ))
-
-    short_question = QUESTION_SHORT_FORMS.get(selected_question, selected_question)
-    title_text = f"{short_question} (aggregated)"
 
     fig.update_layout(
         title={
@@ -670,7 +672,7 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
         margin=dict(t=80, b=200, l=100, r=200),
         paper_bgcolor="white",
         plot_bgcolor="rgba(248,249,250,0.5)",
-        yaxis={"autorange": "reversed"},
+        yaxis={"autorange": "reversed"},  # puts first category at top
         xaxis=dict(
             range=[-5, 62],
             showgrid=True,
@@ -689,11 +691,10 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
 
 
 
-
 def create_line_plot(question_data, full_question, selected_question, response_mappings):
     """
     Creates a line plot showing sums of specified columns (like a1+a2) over time.
-    Brute force for combat question to ensure correct legend labels.
+    Brute force for the "combat" question to ensure correct legend labels.
     """
 
     # Which columns to sum for each question in Hebrew
@@ -712,17 +713,13 @@ def create_line_plot(question_data, full_question, selected_question, response_m
         }
     }
 
-    # Minimal color mapping
     color_mapping = {
         "Involved in combat (self or first-degree family member)": '#654321',
         "Not involved in combat (self or first-degree family member)": '#333333',
-
         'Female': '#8B0000',
         'Male': '#00008B',
-
         'Living in North/Gaza Envelope': '#006400',
         'Not Living in North/Gaza Envelope': '#4B0082',
-
         'Unknown': '#999999'
     }
 
@@ -730,7 +727,7 @@ def create_line_plot(question_data, full_question, selected_question, response_m
 
     agg_config = aggregations.get(full_question)
     if agg_config:
-        # Sum the relevant columns
+        # Sum relevant columns
         aggregated_data = question_data.copy()
         aggregated_data['agg_value'] = aggregated_data[agg_config['columns']].sum(axis=1)
 
@@ -738,14 +735,13 @@ def create_line_plot(question_data, full_question, selected_question, response_m
         for sub_subject in aggregated_data['sub_subject'].unique():
             sub_data = aggregated_data[aggregated_data['sub_subject'] == sub_subject].sort_values('date')
 
-            # Brute force only for the combat question
+            # If it’s the “combat” question, use special labeling
             if selected_question == "Are you or a first-degree family member involved in combat?":
                 if sub_subject == 'כן':
                     legend_name = "Involved in combat (self or first-degree family member)"
                 else:
                     legend_name = "Not involved in combat (self or first-degree family member)"
             else:
-                # Fallback for other questions
                 if sub_subject in ('זכר', 'Male'):
                     legend_name = "Male"
                 elif sub_subject in ('נקבה', 'Female'):
@@ -767,8 +763,8 @@ def create_line_plot(question_data, full_question, selected_question, response_m
                 line=dict(color=color, width=2),
                 marker=dict(size=8),
                 hovertemplate=(
-                    "Date: %{x|%Y-%m-%d}<br>" +
-                    f"{agg_config['name']}: %{{y:.1f}}%<br>" +
+                    "Date: %{x|%Y-%m-%d}<br>"
+                    f"{agg_config['name']}: %{{y:.1f}}%<br>"
                     "<extra></extra>"
                 )
             ))
@@ -783,7 +779,7 @@ def create_line_plot(question_data, full_question, selected_question, response_m
             all_y_values.extend(trace.y)
         max_y = min(max(all_y_values) + 5, 100) if all_y_values else 100
 
-        # Get X (date) range
+        # Get date range
         all_dates = []
         for trace in fig.data:
             all_dates.extend(trace.x)
@@ -888,8 +884,6 @@ def update_layout(fig, selected_question):
     st.plotly_chart(fig, use_container_width=True, key="layout")
 
 
-
-
 def dashboard_overview():
     st.title("War of Iron Swords: Public Opinion Analytics Dashboard")
 
@@ -973,8 +967,94 @@ def personal_security_text():
         "the darker the color the higher number of alarms at this location. "
         "Hover over a dot to see the locality and the sum of alarms at this locality in the selected period."
     )
+def show_alerts_statistics():
+    """
+    A component showing alert statistics from Oct 7, 2023 to Nov 2024,
+    with slightly smaller styling and an additional "Feel Secure %" stat.
+    Returns None, displays the statistics directly using streamlit.
+    """
+    # Constants for alerts data
+    TOTAL_ALERTS = 35417
+    START_DATE = datetime(2023, 10, 7)
+    END_DATE = datetime(2024, 11, 30)
+    TOTAL_DAYS = (END_DATE - START_DATE).days
+    AVG_ALERTS = round(TOTAL_ALERTS / TOTAL_DAYS)
+    AVG_FEEL_SECURE = 30.27  # The new metric to display
 
+    # Custom CSS for styling (made slightly smaller)
+    st.markdown("""
+        <style>
+        .big-number {
+            font-size: 32px; /* Reduced from 36px */
+            font-weight: bold;
+            text-align: center;
+        }
+        .stat-card {
+            background-color: transparent;
+            border-radius: 10px;
+            padding: 8px; /* Reduced padding from 10px */
+            text-align: center;
+            height: 100%;
+        }
+        .alert-header {
+            text-align: center;
+            margin-bottom: 0.3rem; /* Slightly reduced margin */
+            font-size: 1rem;       /* Reduced from 1.25rem */
+            font-weight: bold;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
+    # Container for the alerts component
+    with st.container():
+        # Optional header with date range (you can uncomment if needed)
+        # st.markdown("<p class='alert-header'>Total Alerts</p>", unsafe_allow_html=True)
+        st.markdown(
+            f"<p style='text-align: center; font-size: 12px;'>"
+            f"From {START_DATE.strftime('%B %d, %Y')} to {END_DATE.strftime('%B %Y')}</p>",
+            unsafe_allow_html=True
+        )
+
+        # Tabs
+        tab1, tab2 = st.tabs(["Counter", "Statistics"])
+
+        with tab1:
+            st.markdown(f"""
+                <div style='text-align: center; padding: 0.5rem;'> <!-- Reduced padding -->
+                    <div class='big-number'>{format(TOTAL_ALERTS, ',')}</div>
+                    <p style='font-size: 14px;'>Total Alerts Recorded</p> <!-- Slightly smaller font -->
+                </div>
+            """, unsafe_allow_html=True)
+
+        with tab2:
+            col1, col2, col3 = st.columns(3)  # Three columns to include the new Feel Secure % stat
+
+            with col1:
+                st.markdown(f"""
+                    <div class='stat-card'>
+                        <h3 style='font-size: 14px;'>Daily Average</h3> <!-- Smaller font -->
+                        <p class='big-number'>{AVG_ALERTS}</p>
+                        <p style='font-size: 12px;'>alerts per day</p> <!-- Smaller font -->
+                    </div>
+                """, unsafe_allow_html=True)
+
+            with col2:
+                st.markdown(f"""
+                    <div class='stat-card'>
+                        <h3 style='font-size: 14px;'>Total Period</h3> <!-- Smaller font -->
+                        <p class='big-number'>{TOTAL_DAYS}</p>
+                        <p style='font-size: 12px;'>days</p> <!-- Smaller font -->
+                    </div>
+                """, unsafe_allow_html=True)
+
+            with col3:
+                st.markdown(f"""
+                    <div class='stat-card'>
+                        <h3 style='font-size: 14px;'>Feel Secure %</h3> <!-- Smaller font -->
+                        <p class='big-number'>{AVG_FEEL_SECURE}</p>
+                        <p style='font-size: 12px;'>average</p> <!-- Smaller font -->
+                    </div>
+                """, unsafe_allow_html=True)
 def public_trust_text():
     """
     Displays text describing the purpose and usage instructions for the Public Trust visualization.
@@ -987,7 +1067,7 @@ def public_trust_text():
 
     ### How To Use
     - **Main Plot**: View the average trust levels during the war for each institution or public figure.
-    - **Drill Down**: Click on a specific circle to see the trust levels throughout the war.
+    - **Drill Down**: Click on a specific bar to see the trust levels throughout the war.
     - **Demographic Breakdown**: Choose a demographic dimension to see changes in trust over time within each subgroup.
     - **Scoring Range**: Trust scores range from 1 (lowest) to 4 (highest).
     - **Over Time view**: Click on a line in the plot or a category in the legend to hide it. Click again on the legend to bring it back. 
@@ -1056,7 +1136,9 @@ if visualization == "Sense of Personal Security":
     col1, col2 = st.columns([1, 2])  # Left side for text & controls, Right side for map
 
     with col1:
+        show_alerts_statistics()
         personal_security_text()
+        # show_alerts_statistics()
 
         # Move the time period selection here
         # st.write("Select Time Period")
@@ -1102,9 +1184,15 @@ if visualization == "Public Trust In Institutions And Public Figures":
         st.markdown("---")
 
         # ROW 2: radio on the left, line plot on the right
-        row2_left, row2_right = st.columns([1, 2])
+        row2_left, row2_right = st.columns([1, 4])
 
         with row2_left:
+            st.write("")
+            st.write("")
+            st.write("")
+            st.write("")
+            st.write("")
+            st.write("")
             # The radio button is now in the second row, left column
             selected_demo = st.radio(
                 "Choose a demographic dimension:",
