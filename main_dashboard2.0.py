@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import numpy as np
 from streamlit_plotly_events import plotly_events
 import geopandas as gpd
@@ -973,6 +975,81 @@ def personal_security_text():
         "the darker the color the higher number of alarms at this location. "
         "Hover over a dot to see the locality and the sum of alarms at this locality in the selected period."
     )
+def show_alerts_statistics():
+    """
+    A component showing alert statistics from Oct 7, 2023 to Nov 2024.
+    Returns None, displays the statistics directly using streamlit.
+    """
+    # Constants for alerts data
+    TOTAL_ALERTS = 35417
+    START_DATE = datetime(2023, 10, 7)
+    END_DATE = datetime(2024, 11, 30)
+    TOTAL_DAYS = (END_DATE - START_DATE).days
+    AVG_ALERTS = round(TOTAL_ALERTS / TOTAL_DAYS)
+
+    # Custom CSS for styling
+    st.markdown("""
+        <style>
+        .big-number {
+            font-size: 36px; /* Smaller font size */
+            font-weight: bold;
+            text-align: center;
+        }
+        .stat-card {
+            background-color: transparent; /* Remove background color */
+            border-radius: 10px;
+            padding: 10px; /* Reduced padding */
+            text-align: center;
+            height: 100%;
+        }
+        .alert-header {
+            text-align: center;
+            margin-bottom: 0.5rem; /* Reduced margin */
+            font-size: 1.25rem; /* Smaller font size */
+            font-weight: bold;
+        }
+
+        </style>
+    """, unsafe_allow_html=True)
+
+    # Container for the alerts component
+    with st.container():
+        # Header with date range
+        st.markdown("<p class='alert-header'>Total Alerts</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align: center; font-size: 14px;'>From {START_DATE.strftime('%B %d, %Y')} to {END_DATE.strftime('%B %Y')}</p>",
+                    unsafe_allow_html=True)
+
+        # Tabs
+        tab1, tab2 = st.tabs(["Counter", "Statistics"])
+
+        with tab1:
+            st.markdown(f"""
+                <div style='text-align: center; padding: 1rem;'> <!-- Reduced padding -->
+                    <div class='big-number'>{format(TOTAL_ALERTS, ',')} </div>
+                    <p style='font-size: 18px;'>Total Alerts Recorded</p> <!-- Smaller font size -->
+                </div>
+            """, unsafe_allow_html=True)
+
+        with tab2:
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("""
+                    <div class='stat-card'>
+                        <h3 style='font-size: 18px;'>Daily Average</h3> <!-- Smaller font size -->
+                        <p class='big-number'>{}</p>
+                        <p style='font-size: 14px;'>alerts per day</p> <!-- Smaller font size -->
+                    </div>
+                """.format(AVG_ALERTS), unsafe_allow_html=True)
+
+            with col2:
+                st.markdown("""
+                    <div class='stat-card'>
+                        <h3 style='font-size: 18px;'>Total Period</h3> <!-- Smaller font size -->
+                        <p class='big-number'>{}</p>
+                        <p style='font-size: 14px;'>days</p> <!-- Smaller font size -->
+                    </div>
+                """.format(TOTAL_DAYS), unsafe_allow_html=True)
 
 
 def public_trust_text():
@@ -1056,7 +1133,9 @@ if visualization == "Sense of Personal Security":
     col1, col2 = st.columns([1, 2])  # Left side for text & controls, Right side for map
 
     with col1:
+        show_alerts_statistics()
         personal_security_text()
+        # show_alerts_statistics()
 
         # Move the time period selection here
         # st.write("Select Time Period")
@@ -1102,9 +1181,15 @@ if visualization == "Public Trust In Institutions And Public Figures":
         st.markdown("---")
 
         # ROW 2: radio on the left, line plot on the right
-        row2_left, row2_right = st.columns([1, 2])
+        row2_left, row2_right = st.columns([1, 4])
 
         with row2_left:
+            st.write("")
+            st.write("")
+            st.write("")
+            st.write("")
+            st.write("")
+            st.write("")
             # The radio button is now in the second row, left column
             selected_demo = st.radio(
                 "Choose a demographic dimension:",
