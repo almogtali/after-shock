@@ -28,59 +28,80 @@ def text_for_solidarity():
     - **Results Over Time**: Displays how the highest score for each subgroup changes throughout the war.
     """)
 
-def create_bar_chart(question_data, full_question, selected_question, response_mappings, QUESTION_SHORT_FORMS):
-    """
-    Creates a horizontal bar chart where:
-    - 'כן' is displayed as 'Involved in combat (self or first-degree family member)'
-    - 'לא' is displayed as 'Not involved in combat (self or first-degree family member)'
-    """
+def create_bar_chart(
+    question_data,
+    full_question,
+    selected_question,
+    subject_label,        # short label for subject
+    dimension_label,      # short label for segmentation
+    response_mappings,
+    QUESTION_SHORT_FORMS
+):
+    import plotly.graph_objects as go
+    import pandas as pd
 
-    # Define correct color mapping
     color_mapping = {
-        "Involved in combat (self or first-degree family member)": '#654321',  # Dark brown
-        "Not involved in combat (self or first-degree family member)": '#333333',  # Dark gray
-        "Female": "#8B0000",  # Dark red
-        "Male": "#00008B",    # Dark blue
-        "Living in North/Gaza Envelope": "#006400",   # Dark green
-        "Not Living in North/Gaza Envelope": "#4B0082",  # Dark purple
-        "Unknown": "#999999"  # Fallback color
+        "Involved in combat (self or first-degree family member)": '#654321',
+        "Not involved in combat (self or first-degree family member)": '#333333',
+        "Female": "#8B0000",
+        "Male": "#00008B",
+        "Living in North/Gaza Envelope": "#006400",
+        "Not Living in North/Gaza Envelope": "#4B0082",
+        "Unknown": "#999999"
     }
 
-    # Identify numeric columns (a1, a2, etc.)
     numeric_cols = [col for col in question_data.columns if col.startswith("a")]
     numeric_cols.sort()
 
-    # Group data by 'sub_subject' and compute mean
-    chart_data = (
-        question_data.groupby("sub_subject", as_index=False)[numeric_cols]
-        .mean()
-    )
-
+    chart_data = question_data.groupby("sub_subject", as_index=False)[numeric_cols].mean()
     fig = go.Figure()
 
-    # Convert the 'aX' codes to English labels if available
+    # Map columns (a1, a2, ...) to English if available
     if full_question in response_mappings:
         categories = [response_mappings[full_question].get(col, col) for col in numeric_cols]
     else:
         categories = [f"Response {i}" for i in range(1, len(numeric_cols) + 1)]
 
-    # Define mapping for different question types to determine title prefix
-    question_prefix_mapping = {
-        "Has there been a change in the sense of solidarity in Israeli society at this time?": "Change in solidarity",
-        "What is your social situation?": "Social situation",
-        "How optimistic are you about Israeli society's ability to recover from the crisis and grow?": "Optimism",
-    }
+    # Define sorting orders for known questions
+    solidarity_order = [
+        "Solidarity has significantly decreased",
+        "Solidarity has somewhat decreased",
+        "No change in solidarity",
+        "Solidarity has somewhat strengthened",
+        "Solidarity has significantly strengthened"
+    ]
+    concern_order = [
+        "Not concerned at all",
+        "Slightly concerned",
+        "Moderately concerned",
+        "Concerned",
+        "Very concerned"
+    ]
+    optimism_order = [
+        "Very pessimistic",
+        "Somewhat pessimistic",
+        "Neutral",
+        "Somewhat optimistic",
+        "Very optimistic"
+    ]
 
-    # Get short question form
-    short_question = QUESTION_SHORT_FORMS.get(selected_question, selected_question)
+    # Determine category ordering based on the question
+    if "optimistic" in selected_question.lower():
+        category_order = optimism_order[::-1]
+    elif "concerned" in selected_question.lower():
+        category_order = concern_order
+    elif "solidarity" in selected_question.lower():
+        category_order = solidarity_order
+    else:
+        category_order = categories
 
-    # Determine the correct title prefix based on the selected question
-    title_prefix = question_prefix_mapping.get(selected_question, short_question)  # Fallback to short_question if not mapped
+    # Special sorting for optimism
+    if "optimistic" in selected_question.lower():
+        chart_data["sub_subject"] = chart_data["sub_subject"].str.strip()
+        chart_data["sub_subject"] = pd.Categorical(chart_data["sub_subject"], categories=optimism_order, ordered=True)
+        chart_data = chart_data.sort_values("sub_subject", ascending=False)
 
-    # Construct the final title dynamically
-    title_text = f"{title_prefix} by {short_question}, aggregated"
-
-    # Map sub_subject => English legend labels
+    # Create the bar traces
     for _, row in chart_data.iterrows():
         sub_subject = row["sub_subject"]
 
@@ -104,8 +125,6 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
                 legend_name = "Unknown"
 
         bar_color = color_mapping.get(legend_name, color_mapping["Unknown"])
-
-        # Multiply by 100 to display percentages
         values = [row[col] * 100 for col in numeric_cols]
         text_values = [f"{v:.1f}%" for v in values]
 
@@ -122,6 +141,9 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
                           f"{legend_name}: " + "%{x:.1f}%" +
                           "<extra></extra>"
         ))
+
+    # SHORTER TITLE
+    title_text = f"{subject_label} | {dimension_label} (Aggregated)"
 
     fig.update_layout(
         title={
@@ -147,7 +169,7 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
         margin=dict(t=80, b=200, l=100, r=200),
         paper_bgcolor="white",
         plot_bgcolor="rgba(248,249,250,0.5)",
-        yaxis={"autorange": "reversed"},  # puts first category at top
+        yaxis={"autorange": "reversed"},
         xaxis=dict(
             range=[-5, 62],
             showgrid=True,
@@ -155,22 +177,29 @@ def create_bar_chart(question_data, full_question, selected_question, response_m
         )
     )
 
+    # Enforce category order on the y-axis
     fig.update_yaxes(
         categoryorder="array",
-        categoryarray=categories,
+        categoryarray=category_order,
         tickangle=0,
         automargin=True
     )
 
     st.plotly_chart(fig, use_container_width=True, key="bar_chart")
 
-def create_line_plot(question_data, full_question, selected_question, response_mappings):
-    """
-    Creates a line plot showing sums of specified columns (like a1+a2) over time.
-    Brute force for the "combat" question to ensure correct legend labels.
-    """
 
-    # Which columns to sum for each question in Hebrew
+def create_line_plot(
+        question_data,
+        full_question,
+        selected_question,
+        subject_label,  # short subject label
+        dimension_label,  # short segmentation label
+        response_mappings
+):
+    import plotly.graph_objects as go
+    import pandas as pd
+
+    # Definition of how to sum columns for each question
     aggregations = {
         'האם חל שינוי בתחושת הסולידריות בחברה הישראלית בעת הזו': {
             'name': 'Solidarity has strengthened',
@@ -189,26 +218,23 @@ def create_line_plot(question_data, full_question, selected_question, response_m
     color_mapping = {
         "Involved in combat (self or first-degree family member)": '#654321',
         "Not involved in combat (self or first-degree family member)": '#333333',
-        'Female': '#8B0000',
-        'Male': '#00008B',
-        'Living in North/Gaza Envelope': '#006400',
-        'Not Living in North/Gaza Envelope': '#4B0082',
-        'Unknown': '#999999'
+        "Female": "#8B0000",
+        "Male": "#00008B",
+        "Living in North/Gaza Envelope": "#006400",
+        "Not Living in North/Gaza Envelope": "#4B0082",
+        "Unknown": "#999999"
     }
 
     fig = go.Figure()
-
     agg_config = aggregations.get(full_question)
+
     if agg_config:
-        # Sum relevant columns
         aggregated_data = question_data.copy()
         aggregated_data['agg_value'] = aggregated_data[agg_config['columns']].sum(axis=1)
 
-        # For each sub_subject, draw a line over time
         for sub_subject in aggregated_data['sub_subject'].unique():
             sub_data = aggregated_data[aggregated_data['sub_subject'] == sub_subject].sort_values('date')
 
-            # If it’s the “combat” question, use special labeling
             if selected_question == "Are you or a first-degree family member involved in combat?":
                 if sub_subject == 'כן':
                     legend_name = "Involved in combat (self or first-degree family member)"
@@ -242,20 +268,13 @@ def create_line_plot(question_data, full_question, selected_question, response_m
                 )
             ))
 
-        # Title text
-        short_question = response_mappings.get(selected_question, selected_question)
-        title_text = f"{short_question} - Over Time"
+        # SHORTER TITLE
+        title_text = f"{subject_label} | {dimension_label} (Over Time)"
 
-        # Get Y range
-        all_y_values = []
-        for trace in fig.data:
-            all_y_values.extend(trace.y)
+        all_y_values = [val for trace in fig.data for val in trace.y]
         max_y = min(max(all_y_values) + 5, 100) if all_y_values else 100
 
-        # Get date range
-        all_dates = []
-        for trace in fig.data:
-            all_dates.extend(trace.x)
+        all_dates = [val for trace in fig.data for val in trace.x]
         if all_dates:
             min_date, max_date = min(all_dates), max(all_dates)
         else:
@@ -307,7 +326,6 @@ def create_line_plot(question_data, full_question, selected_question, response_m
     else:
         st.error("Question configuration not found")
 
-
 def create_solidarity_dashboard():
 
     # 1. Mapping of English question labels to Hebrew question strings
@@ -321,13 +339,30 @@ def create_solidarity_dashboard():
 
     # 2. File selection with predefined questions (English labels)
     file_options = {
-        "Has there been a change in the sense of solidarity in Israeli society at this time?":
-            "data/solidarity.xlsx",
-        "How concerned are you about Israel's social situation on the day after the war?":
-            "data/matzv_chvrati.xlsx",
-        "How optimistic are you about Israeli society's ability to recover from the crisis and grow?":
-            "data/mashber.xlsx"
+        "Has there been a change in the sense of solidarity in Israeli society at this time?": "data/solidarity.xlsx",
+        "How concerned are you about Israel's social situation on the day after the war?": "data/matzv_chvrati.xlsx",
+        "How optimistic are you about Israeli society's ability to recover from the crisis and grow?": "data/mashber.xlsx"
     }
+
+    # --- NEW: Mapping from long titles → short display names ---
+    display_mapping = {
+        "Has there been a change in the sense of solidarity in Israeli society at this time?": "Change in national solidarity during wartime",
+        "How concerned are you about Israel's social situation on the day after the war?": "Concerns about Israel’s post-war social stability",
+        "How optimistic are you about Israeli society's ability to recover from the crisis and grow?": "Optimism about Israel’s ability to recover from the crisis"
+    }
+
+    chart_title_mapping = {
+        "Has there been a change in the sense of solidarity in Israeli society at this time?": "Solidarity",
+        "How concerned are you about Israel's social situation on the day after the war?": "Post-war Concerns",
+        "How optimistic are you about Israeli society's ability to recover from the crisis and grow?": "Optimism"
+    }
+    segmentation_short_mapping = {
+        "Involved in combat (self or first-degree family member)": "Involved in combat",
+        "Residing near Gaza/northern border (self or first-degree family member)": "Residing near border",
+        "Gender": "Gender"
+    }
+
+    # -----------------------------------------------------------
 
     # 3. Response mappings (in Hebrew → displayed as English)
     response_mappings = {
@@ -356,25 +391,23 @@ def create_solidarity_dashboard():
     # 4. The original 'predefined_questions' list (English labels)
     predefined_questions = list(question_mapping.keys())
 
-    # --------------------------------------------------------------------------
-    # 5. Concise statements to replace the question text
-    # --------------------------------------------------------------------------
+    # 5. Concise statements to replace the question text (for sub-subject segmentation)
     concise_statements = {
-        "Are you or a first-degree family member involved in combat?":
-            "Involved in combat (self or first-degree family member)",
-        "Are you or a first-degree family member residing near the Gaza envelope or northern border?":
-            "Residing near Gaza/northern border (self or first-degree family member)",
+        "Are you or a first-degree family member involved in combat?": "Involved in combat (self or first-degree family member)",
+        "Are you or a first-degree family member residing near the Gaza envelope or northern border?": "Residing near Gaza/northern border (self or first-degree family member)",
         "Gender": "Gender"
     }
-
-    # We'll build a reverse lookup to recover the original question from its short statement
     statement_to_question = {v: k for k, v in concise_statements.items()}
 
-    # 6. Streamlit UI
-    selected_file = st.selectbox(
-        "Select Subject to Display:",
-        list(file_options.keys())
-    )
+    # --- REPLACE the standard selectbox with short display names ---
+    # Generate a display list of short names for the dropdown
+    display_list = [display_mapping[orig_key] for orig_key in file_options.keys()]
+    # Create a selectbox using the short names
+    selected_display = st.selectbox("Select Subject to Display:", display_list)
+    # Convert the user's short-name choice back to the original key
+    selected_file_original = {v: k for k, v in display_mapping.items()}[selected_display]
+    subject_label_for_chart = chart_title_mapping[selected_file_original]
+    # ---------------------------------------------------------------
 
     col1, col2 = st.columns([0.8, 2.2])
 
@@ -389,6 +422,7 @@ def create_solidarity_dashboard():
             "Select segmentation to display:",
             [concise_statements[q] for q in predefined_questions]
         )
+    short_seg_label = segmentation_short_mapping.get(selected_statement, selected_statement)
 
     # Convert the selected statement back to the original question key
     selected_question = statement_to_question.get(selected_statement, selected_statement)
@@ -396,12 +430,12 @@ def create_solidarity_dashboard():
     # 7. Find the Hebrew question string
     hebrew_question = question_mapping.get(selected_question)
 
-    # 8. Load the data
+    # 8. Load the data (use selected_file_original in place of 'selected_file')
     try:
-        df = pd.read_excel(file_options[selected_file])
+        df = pd.read_excel(file_options[selected_file_original])
         df["date"] = pd.to_datetime(df["date"])
     except FileNotFoundError:
-        st.error(f"The selected survey file '{selected_file}' was not found. Please check the file path.")
+        st.error(f"The selected survey file '{selected_file_original}' was not found. Please check the file path.")
         return
     except Exception as e:
         st.error(f"An error occurred while loading the data: {e}")
@@ -415,13 +449,29 @@ def create_solidarity_dashboard():
         st.error("Selected question mapping not found.")
         return
 
+    # Attempt to retrieve the full question text if present
     full_question = df["q_full"].iloc[0] if not df.empty else None
 
     # 10. Choose which visualization to draw
     if viz_type == "Aggregated results":
-        create_bar_chart(question_data, full_question, selected_question, response_mappings, QUESTION_SHORT_FORMS)
-
+        # create_bar_chart(question_data, full_question, selected_question, response_mappings, QUESTION_SHORT_FORMS)
+        create_bar_chart(
+            question_data,
+            full_question,
+            selected_question,
+            subject_label=subject_label_for_chart,  # or whatever short label you want
+            dimension_label=short_seg_label,  # or whichever segmentation label
+            response_mappings=response_mappings,
+            QUESTION_SHORT_FORMS=QUESTION_SHORT_FORMS
+        )
     else:
-        create_line_plot(question_data, full_question, selected_question, response_mappings)
 
+        create_line_plot(
+            question_data,
+            full_question,
+            selected_question,
+            subject_label=subject_label_for_chart,  # short subject label
+            dimension_label=short_seg_label,  # short segmentation label
+            response_mappings=response_mappings
+        )
 
