@@ -217,13 +217,9 @@ def show_alerts_statistics():
 
     # Container for the alerts component
     with st.container():
-        # Optional header with date range (you can uncomment if needed)
-        # st.markdown("<p class='alert-header'>Total Alerts</p>", unsafe_allow_html=True)
-        # st.markdown(
-        #     f"<p style='text-align: center; font-size: 12px;'>"
-        #     f"From {START_DATE.strftime('%B %d, %Y')} to {END_DATE.strftime('%B %Y')}</p>",
-        #     unsafe_allow_html=True
-        # )
+
+        # Header
+        st.subheader("Data Overview")
 
         # Tabs
         tab1, tab2 = st.tabs(["Counter", "Statistics"])
