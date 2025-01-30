@@ -101,7 +101,7 @@ def create_bar_chart(question_data,full_question,selected_question,subject_label
         if selected_question == "Are you or a first-degree family member involved in combat?":
             legend_name = yes_no_map.get(sub_subject.strip(), "Unknown")
         else:
-            male_fmale.get(sub_subject.strip(), "Unknown")
+            legend_name = male_fmale.get(sub_subject.strip(), "Unknown")
 
         bar_color = color_mapping.get(legend_name, color_mapping["Unknown"])
         values = [row[col] * 100 for col in numeric_cols]
