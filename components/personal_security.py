@@ -6,7 +6,7 @@ import streamlit as st
 import geopandas as gpd
 import plotly.graph_objects as go
 
-def personal_security_text():
+def personal_security_purpose():
     """Displays an explanation of the personal security section in the dashboard."""
     st.subheader("Purpose")
     st.write(
@@ -14,6 +14,8 @@ def personal_security_text():
         "providing insights into how different areas experience and perceive threats."
     )
 
+def personal_security_how_to():
+    """Displays an explanation of the personal security section in the dashboard."""
     st.subheader("How To Use")
     st.write(
         "Filter period using the slider.\n\n"
