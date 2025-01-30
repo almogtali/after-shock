@@ -174,13 +174,13 @@ def create_demographic_time_series(selected_inst_key, selected_demo, data, insti
             "Refuses to Answer": {"hebrew": "מסרב", "color": "rgb(128, 128, 128)"}
         },
         "Age": {
-            "75+": {"hebrew": "75+", "color": "rgb(139, 0, 0)"},
-            "65-74": {"hebrew": "65-74", "color": "rgb(178, 34, 34)"},
-            "55-64": {"hebrew": "55-64", "color": "rgb(205, 92, 92)"},
-            "45-54": {"hebrew": "45-54", "color": "rgb(210, 128, 128)"},
-            "35-44": {"hebrew": "35-44", "color": "rgb(250, 128, 150)"},
-            "25-34": {"hebrew": "25-34", "color": "rgb(255, 160, 160)"},
-            "18-24": {"hebrew": "18-24", "color": "rgb(255, 200, 203)"}
+            "75+": {"hebrew": "75+", "color": "rgb(70, 0, 0)"},
+            "65-74": {"hebrew": "65-74", "color": "rgb(100, 34, 34)"},
+            "55-64": {"hebrew": "55-64", "color": "rgb(160, 80, 80)"},
+            "45-54": {"hebrew": "45-54", "color": "rgb(213, 109, 109)"},
+            "35-44": {"hebrew": "35-44", "color": "rgb(230, 160, 143)"},
+            "25-34": {"hebrew": "25-34", "color": "rgb(240, 200, 160)"},
+            "18-24": {"hebrew": "18-24", "color": "rgb(250, 229, 190)"}
         }
     }
 
