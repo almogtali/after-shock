@@ -20,7 +20,6 @@ def render_personal_security():
     col1, col2 = st.columns([1, 2])  # Left for text & controls, right for map
 
     with col1:
-        personal_security.show_alerts_statistics()
         personal_security.personal_security_text()
         selected_range = st.select_slider(
             key="slider1",
@@ -29,6 +28,7 @@ def render_personal_security():
             value=(MONTHS[0], MONTHS[-1])
         )
         show_alarms = st.checkbox(label="Show Alarms", value=True)
+        personal_security.show_alerts_statistics()
 
     with col2:
         personal_security.rocket_strikes_map(selected_range, show_alarms)
