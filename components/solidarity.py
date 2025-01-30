@@ -216,12 +216,12 @@ def create_line_plot(
     }
 
     color_mapping = {
-        "Involved in combat (self or first-degree family member)": '#654321',
-        "Not involved in combat (self or first-degree family member)": '#333333',
+        "Involved in combat (self or first-degree family member)": '#333333',
+        "Not involved in combat (self or first-degree family member)": '#E68943',
         "Female": "#8B0000",
         "Male": "#00008B",
-        "Living in North/Gaza Envelope": "#006400",
-        "Not Living in North/Gaza Envelope": "#4B0082",
+        "Living in North/Gaza Envelope": "#00B300",
+        "Not Living in North/Gaza Envelope": "#8600E6",
         "Unknown": "#999999"
     }
 
