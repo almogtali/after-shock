@@ -153,11 +153,11 @@ def create_demographic_time_series(selected_inst_key, selected_demo, data, insti
     institution_name = institutions.get(selected_inst_key, "Unknown Institution")
     demo_mapping = {
         "District": {
-            "North": {"hebrew": "צפון", "color": "rgb(0, 128, 255)"},
-            "Haifa": {"hebrew": "חיפה", "color": "rgb(255, 140, 0)"},
-            "Center": {"hebrew": "מרכז", "color": "rgb(50, 205, 50)"},
-            "Tel Aviv": {"hebrew": "תל אביב", "color": "rgb(255, 0, 255)"},
-            "Jerusalem": {"hebrew": "ירושלים", "color": "rgb(255, 215, 0)"},
+            "North": {"hebrew": "צפון", "color": "rgb(1, 56, 255)"},
+            "Haifa": {"hebrew": "חיפה", "color": "rgb(255, 165, 0)"},
+            "Center": {"hebrew": "מרכז", "color": "rgb(1, 255, 244)"},
+            "Tel Aviv": {"hebrew": "תל אביב", "color": "rgb(255, 0, 246)"},
+            "Jerusalem": {"hebrew": "ירושלים", "color": "rgb(237, 255, 0)"},
             "Judea & Samaria": {"hebrew": "יהודה ושומרון", "color": "rgb(128, 0, 128)"},
             "South": {"hebrew": "דרום", "color": "rgb(220, 20, 60)"}
         },
@@ -177,10 +177,10 @@ def create_demographic_time_series(selected_inst_key, selected_demo, data, insti
             "75+": {"hebrew": "75+", "color": "rgb(139, 0, 0)"},
             "65-74": {"hebrew": "65-74", "color": "rgb(178, 34, 34)"},
             "55-64": {"hebrew": "55-64", "color": "rgb(205, 92, 92)"},
-            "45-54": {"hebrew": "45-54", "color": "rgb(240, 128, 128)"},
-            "35-44": {"hebrew": "35-44", "color": "rgb(250, 128, 114)"},
-            "25-34": {"hebrew": "25-34", "color": "rgb(255, 160, 122)"},
-            "18-24": {"hebrew": "18-24", "color": "rgb(255, 192, 203)"}
+            "45-54": {"hebrew": "45-54", "color": "rgb(210, 128, 128)"},
+            "35-44": {"hebrew": "35-44", "color": "rgb(250, 128, 150)"},
+            "25-34": {"hebrew": "25-34", "color": "rgb(255, 160, 160)"},
+            "18-24": {"hebrew": "18-24", "color": "rgb(255, 200, 203)"}
         }
     }
 
