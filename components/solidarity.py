@@ -28,17 +28,7 @@ def text_for_solidarity():
     - **Results Over Time**: Displays how the highest score for each subgroup changes throughout the war.
     """)
 
-def create_bar_chart(
-    question_data,
-    full_question,
-    selected_question,
-    subject_label,        # short label for subject
-    dimension_label,      # short label for segmentation
-    response_mappings,
-    QUESTION_SHORT_FORMS
-):
-    import plotly.graph_objects as go
-    import pandas as pd
+def create_bar_chart(question_data,full_question,selected_question,subject_label,dimension_label,response_mappings,QUESTION_SHORT_FORMS):
 
     color_mapping = {
         "Involved in combat (self or first-degree family member)": '#654321',
@@ -48,6 +38,17 @@ def create_bar_chart(
         "Living in North/Gaza Envelope": "#006400",
         "Not Living in North/Gaza Envelope": "#4B0082",
         "Unknown": "#999999"
+    }
+    
+    yes_no_map = {
+        "כן": "Involved in combat (self or first-degree family member)",
+        "לא": "Not involved in combat (self or first-degree family member)"
+    }
+    male_fmale = {
+        "זכר": "Male",
+        "נקבה": "Female",
+        "כן": "Living in North/Gaza Envelope",
+        "לא": "Not Living in North/Gaza Envelope"
     }
 
     numeric_cols = [col for col in question_data.columns if col.startswith("a")]
@@ -62,7 +63,6 @@ def create_bar_chart(
     else:
         categories = [f"Response {i}" for i in range(1, len(numeric_cols) + 1)]
 
-    # Define sorting orders for known questions
     solidarity_order = [
         "Solidarity has significantly decreased",
         "Solidarity has somewhat decreased",
@@ -78,51 +78,30 @@ def create_bar_chart(
         "Very concerned"
     ]
     optimism_order = [
-        "Very pessimistic",
-        "Somewhat pessimistic",
-        "Neutral",
-        "Somewhat optimistic",
         "Very optimistic"
+        "Somewhat optimistic",
+        "Neutral",
+        "Somewhat pessimistic",
+        "Very pessimistic",
     ]
 
-    # Determine category ordering based on the question
-    if "optimistic" in selected_question.lower():
-        category_order = optimism_order[::-1]
-    elif "concerned" in selected_question.lower():
+    if "optimism" in selected_question.lower():
+        category_order = optimism_order
+    elif "concerns" in selected_question.lower():
         category_order = concern_order
     elif "solidarity" in selected_question.lower():
         category_order = solidarity_order
     else:
         category_order = categories
 
-    # Special sorting for optimism
-    if "optimistic" in selected_question.lower():
-        chart_data["sub_subject"] = chart_data["sub_subject"].str.strip()
-        chart_data["sub_subject"] = pd.Categorical(chart_data["sub_subject"], categories=optimism_order, ordered=True)
-        chart_data = chart_data.sort_values("sub_subject", ascending=False)
-
     # Create the bar traces
     for _, row in chart_data.iterrows():
         sub_subject = row["sub_subject"]
 
         if selected_question == "Are you or a first-degree family member involved in combat?":
-            if sub_subject.strip() == "כן":
-                legend_name = "Involved in combat (self or first-degree family member)"
-            elif sub_subject.strip() == "לא":
-                legend_name = "Not involved in combat (self or first-degree family member)"
-            else:
-                legend_name = "Unknown"
+            legend_name = yes_no_map.get(sub_subject.strip(), "Unknown")
         else:
-            if sub_subject.strip() == "זכר":
-                legend_name = "Male"
-            elif sub_subject.strip() == "נקבה":
-                legend_name = "Female"
-            elif sub_subject.strip() == "כן":
-                legend_name = "Living in North/Gaza Envelope"
-            elif sub_subject.strip() == "לא":
-                legend_name = "Not Living in North/Gaza Envelope"
-            else:
-                legend_name = "Unknown"
+            male_fmale.get(sub_subject.strip(), "Unknown")
 
         bar_color = color_mapping.get(legend_name, color_mapping["Unknown"])
         values = [row[col] * 100 for col in numeric_cols]
@@ -176,15 +155,18 @@ def create_bar_chart(
             dtick=10
         )
     )
-
-    # Enforce category order on the y-axis
-    fig.update_yaxes(
+    if subject_label == "Optimism":
+        fig.update_yaxes(
+        categoryorder="array",
+        categoryarray=category_order[::-1],
+        tickangle=0,
+        automargin=True)
+    else:
+        fig.update_yaxes(
         categoryorder="array",
         categoryarray=category_order,
         tickangle=0,
-        automargin=True
-    )
-
+        automargin=True)
     st.plotly_chart(fig, use_container_width=True, key="bar_chart")
 
 
@@ -196,9 +178,6 @@ def create_line_plot(
         dimension_label,  # short segmentation label
         response_mappings
 ):
-    import plotly.graph_objects as go
-    import pandas as pd
-
     # Definition of how to sum columns for each question
     aggregations = {
         'האם חל שינוי בתחושת הסולידריות בחברה הישראלית בעת הזו': {
