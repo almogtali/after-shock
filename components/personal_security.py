@@ -217,16 +217,21 @@ def show_alerts_statistics():
     with st.container():
         # Optional header with date range (you can uncomment if needed)
         # st.markdown("<p class='alert-header'>Total Alerts</p>", unsafe_allow_html=True)
-        st.markdown(
-            f"<p style='text-align: center; font-size: 12px;'>"
-            f"From {START_DATE.strftime('%B %d, %Y')} to {END_DATE.strftime('%B %Y')}</p>",
-            unsafe_allow_html=True
-        )
+        # st.markdown(
+        #     f"<p style='text-align: center; font-size: 12px;'>"
+        #     f"From {START_DATE.strftime('%B %d, %Y')} to {END_DATE.strftime('%B %Y')}</p>",
+        #     unsafe_allow_html=True
+        # )
 
         # Tabs
         tab1, tab2 = st.tabs(["Counter", "Statistics"])
 
         with tab1:
+            st.markdown(
+                f"<p style='text-align: center; font-size: 12px;'>"
+                f"From {START_DATE.strftime('%B %d, %Y')} to {END_DATE.strftime('%B %Y')}</p>",
+                unsafe_allow_html=True
+            )
             st.markdown(f"""
                 <div style='text-align: center; padding: 0.5rem;'> <!-- Reduced padding -->
                     <div class='big-number'>{format(TOTAL_ALERTS, ',')}</div>
@@ -235,6 +240,12 @@ def show_alerts_statistics():
             """, unsafe_allow_html=True)
 
         with tab2:
+            st.markdown(
+                f"<p style='text-align: center; font-size: 12px;'>"
+                f"From {START_DATE.strftime('%B %d, %Y')} to {END_DATE.strftime('%B %Y')}</p>",
+                unsafe_allow_html=True
+            )
+            
             col1, col2, col3 = st.columns(3)  # Three columns to include the new Feel Secure % stat
 
             with col1:
