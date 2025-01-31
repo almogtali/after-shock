@@ -11,7 +11,7 @@ END_DATE = pd.Timestamp(2024, 11, 30).date()
 MONTHS = pd.date_range(start=START_DATE, end=END_DATE, freq='MS').to_period('M')
 
 st.set_page_config(
-    page_title="My Dashboard",
+    page_title="Harvut Barzel visualiztion",
     layout="wide"
 )
 
