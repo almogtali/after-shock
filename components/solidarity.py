@@ -71,11 +71,11 @@ def create_bar_chart(question_data,full_question,selected_question,subject_label
         "Solidarity has significantly strengthened"
     ]
     concern_order = [
-        "Not concerned at all",
-        "Slightly concerned",
-        "Moderately concerned",
-        "Concerned",
         "Very concerned"
+        "Concerned",
+        "Moderately concerned",
+        "Slightly concerned",
+        "Not concerned at all",
     ]
     optimism_order = [
         "Very optimistic"
@@ -155,7 +155,7 @@ def create_bar_chart(question_data,full_question,selected_question,subject_label
             dtick=10
         )
     )
-    if subject_label == "Optimism":
+    if subject_label == "Optimism" or "Concerns" in subject_label:
         fig.update_yaxes(
         categoryorder="array",
         categoryarray=category_order[::-1],
